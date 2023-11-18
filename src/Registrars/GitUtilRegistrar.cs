@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Git.Util.Abstract;
+using Soenneker.Utils.Directory.Registrars;
 
 namespace Soenneker.Git.Util.Registrars;
 
@@ -15,6 +16,7 @@ public static class GitUtilRegistrar
     public static void AddGitUtilAsSingleton(this IServiceCollection services)
     {
         services.TryAddSingleton<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsSingleton();
     }
 
     /// <summary>
@@ -23,5 +25,6 @@ public static class GitUtilRegistrar
     public static void AddGitUtilAsScoped(this IServiceCollection services)
     {
         services.TryAddScoped<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsScoped();
     }
 }
