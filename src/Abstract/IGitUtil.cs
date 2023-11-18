@@ -14,6 +14,8 @@ public interface IGitUtil
 
     void Pull(string directory);
 
+    void Fetch(string directory);
+
     void Commit(string directory, string message);
 
     ValueTask Push(string directory, string username, string token, bool delayOnSuccess = true);
@@ -23,6 +25,8 @@ public interface IGitUtil
     void AddIfNotExists(string directory, string relativeFilePath);
 
     List<string> GetAllGitRepositoriesRecursively(string directory);
+
+    void SwitchToRemoteBranch(string directory);
 
     /// <summary>
     /// Recursively
