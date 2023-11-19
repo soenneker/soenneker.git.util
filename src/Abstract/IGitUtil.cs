@@ -22,6 +22,12 @@ public interface IGitUtil
 
     void Clone(string uri, string directory);
 
+    /// <summary>
+    /// Creates a temp directory and then clones the repository into it
+    /// </summary>
+    /// <returns>Directory path</returns>
+    string CloneToTempDirectory(string uri);
+
     void AddIfNotExists(string directory, string relativeFilePath);
 
     List<string> GetAllGitRepositoriesRecursively(string directory);

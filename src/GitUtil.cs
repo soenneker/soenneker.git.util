@@ -128,6 +128,15 @@ public class GitUtil : IGitUtil
         _logger.LogDebug("Finished cloning uri ({uri}) into directory ({dir})", uri, directory);
     }
 
+    public string CloneToTempDirectory(string uri)
+    {
+        string dir = _directoryUtil.CreateTempDirectory();
+
+        Clone(uri, dir);
+
+        return dir;
+    }
+
     public void Pull(string directory, string? name = null, string? email = null)
     {
         string? url = null;
