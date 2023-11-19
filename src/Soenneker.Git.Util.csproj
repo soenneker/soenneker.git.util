@@ -42,6 +42,6 @@
       <PackageReference Include="LibGit2Sharp" Version="0.28.0" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="2.1.29" />
-      <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.16" />
+      <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.17" />
     </ItemGroup>
 </Project>
