@@ -12,11 +12,11 @@ public interface IGitUtil
 
     bool IsRepository(string directory);
 
-    void Pull(string directory);
+    void Pull(string directory, string? name = null, string? email = null);
 
     void Fetch(string directory);
 
-    void Commit(string directory, string message);
+    void Commit(string directory, string message, string? name = null, string? email = null);
 
     ValueTask Push(string directory, string username, string token, bool delayOnSuccess = true);
 
@@ -41,7 +41,7 @@ public interface IGitUtil
     /// <summary>
     /// Recursively
     /// </summary>
-    void CommitAllRepositories(string directory, string? commitMessage = null);
+    void CommitAllRepositories(string directory, string commitMessage);
 
     /// <summary>
     /// Recursively

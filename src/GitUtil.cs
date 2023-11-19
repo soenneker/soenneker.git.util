@@ -128,12 +128,12 @@ public class GitUtil : IGitUtil
         _logger.LogDebug("Finished cloning uri ({uri}) into directory ({dir})", uri, directory);
     }
 
-    public void Pull(string directory)
+    public void Pull(string directory, string? name = null, string? email = null)
     {
         string? url = null;
 
-        var name = _config.GetValueStrict<string>("Git:Name");
-        var email = _config.GetValueStrict<string>("Git:Email");
+        name ??= _config.GetValueStrict<string>("Git:Name");
+        email ??= _config.GetValueStrict<string>("Git:Email");
 
         try
         {
@@ -168,10 +168,10 @@ public class GitUtil : IGitUtil
         }
     }
 
-    public void Commit(string directory, string message)
+    public void Commit(string directory, string message, string? name = null, string? email = null)
     {
-        var name = _config.GetValueStrict<string>("Git:Name");
-        var email = _config.GetValueStrict<string>("Git:Email");
+        name ??= _config.GetValueStrict<string>("Git:Name");
+        email ??= _config.GetValueStrict<string>("Git:Email");
 
         try
         {
