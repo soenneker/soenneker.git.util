@@ -23,6 +23,11 @@ public interface IGitUtil
     void Clone(string uri, string directory);
 
     /// <summary>
+    /// Uses Process.Start("git", command) to run a git command
+    /// </summary>
+    void RunCommand(string command);
+
+    /// <summary>
     /// Creates a temp directory and then clones the repository into it
     /// </summary>
     /// <returns>Directory path</returns>

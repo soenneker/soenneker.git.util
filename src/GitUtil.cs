@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using LibGit2Sharp;
@@ -73,7 +74,7 @@ public class GitUtil : IGitUtil
 
         foreach (string repo in allRepos)
         {
-            await Push(repo, username, token, delayOnSuccess);
+            await Push(repo, username, token, delayOnSuccess).ConfigureAwait(false);
         }
     }
 
@@ -135,6 +136,11 @@ public class GitUtil : IGitUtil
         Clone(uri, dir);
 
         return dir;
+    }
+
+    public void RunCommand(string command)
+    {
+        Process.Start("git", command);
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
@@ -323,7 +329,6 @@ public class GitUtil : IGitUtil
 
         return result;
     }
-
 
     private static bool IsFileInIndex(Repository repo, string relativeFilePath)
     {
