@@ -138,9 +138,13 @@ public class GitUtil : IGitUtil
         return dir;
     }
 
-    public void RunCommand(string command)
+    public async ValueTask RunCommand(string command, string directory)
     {
-        Process.Start("git", command);
+        var processInfo = new ProcessStartInfo("git", command)
+            { WorkingDirectory = directory };
+
+        Process? process = Process.Start(processInfo);
+        await process.WaitForExitAsync().ConfigureAwait(false);
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
