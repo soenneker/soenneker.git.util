@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using LibGit2Sharp;
@@ -9,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Configuration;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.Process.Abstract;
 
 namespace Soenneker.Git.Util;
 
@@ -18,12 +18,14 @@ public class GitUtil : IGitUtil
     private readonly IConfiguration _config;
     private readonly ILogger<GitUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
+    private readonly IProcessUtil _processUtil;
 
-    public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil)
+    public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil)
     {
         _config = config;
         _logger = logger;
         _directoryUtil = directoryUtil;
+        _processUtil = processUtil;
     }
     
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -140,11 +142,7 @@ public class GitUtil : IGitUtil
 
     public async ValueTask RunCommand(string command, string directory)
     {
-        var processInfo = new ProcessStartInfo("git", command)
-            { WorkingDirectory = directory };
-
-        Process? process = Process.Start(processInfo);
-        await process.WaitForExitAsync().ConfigureAwait(false);
+        _ = await _processUtil.StartProcess("git", directory, command, true, true);
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
