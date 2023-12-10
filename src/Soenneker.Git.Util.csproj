@@ -43,6 +43,6 @@
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="2.1.56" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.34" />
-      <PackageReference Include="Soenneker.Utils.Process" Version="2.1.88" />
+      <PackageReference Include="Soenneker.Utils.Process" Version="2.1.89" />
     </ItemGroup>
 </Project>
