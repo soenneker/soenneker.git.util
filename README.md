@@ -8,5 +8,5 @@
 ## Installation
 
 ```
-Install-Package Soenneker.Git.Util
+dotnet add package Soenneker.Git.Util
 ```
