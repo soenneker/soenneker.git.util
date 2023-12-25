@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using LibGit2Sharp;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Configuration;
 using Soenneker.Git.Util.Abstract;
+using Soenneker.Utils.Directory;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Process.Abstract;
 
@@ -27,7 +29,7 @@ public class GitUtil : IGitUtil
         _directoryUtil = directoryUtil;
         _processUtil = processUtil;
     }
-    
+
     // TODO: Probably should break these 'bulk' operations into a separate class
 
     public void PullAllGitRepositories(string directory)
@@ -92,7 +94,7 @@ public class GitUtil : IGitUtil
 
                 const string trackedBranchName = "main";
                 Branch mainBranch = repo.Branches[trackedBranchName];
-                Commands.Checkout(repo, mainBranch, new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.Force });
+                Commands.Checkout(repo, mainBranch, new CheckoutOptions {CheckoutModifiers = CheckoutModifiers.Force});
             }
         }
         catch (Exception e)
@@ -299,20 +301,29 @@ public class GitUtil : IGitUtil
 
     public List<string> GetAllGitRepositoriesRecursively(string directory)
     {
-        List<string> directories = _directoryUtil.GetAllDirectoriesRecursively(directory);
+        var finalDirectories = new List<string>();
 
-        var gitRepos = new List<string>();
+        List<string> orderedDirectories = DirectoryUtil.GetDirectoriesOrderedByLevels(directory);
+        orderedDirectories.RemoveAll(c => c.Contains(Path.DirectorySeparatorChar + ".git"));
+        var index = 0;
 
-        foreach (string dir in directories)
+        while (index < orderedDirectories.Count)
         {
-            if (!IsRepository(dir))
-                continue;
+            string item = orderedDirectories[index];
 
-            if (!dir.EndsWith(".git"))
-                gitRepos.Add(dir);
+            if (IsRepository(item))
+            {
+                finalDirectories.Add(item);
+
+                orderedDirectories.RemoveAll(dir => dir.StartsWith(item));
+            }
+            else
+            {
+                index++;
+            }
         }
 
-        return gitRepos;
+        return finalDirectories;
     }
 
     public List<string> GetAllDirtyRepositories(string directory)

@@ -7,7 +7,7 @@ using Soenneker.Utils.Process.Registrars;
 namespace Soenneker.Git.Util.Registrars;
 
 /// <summary>
-/// A validation module checking for disposable email addresses
+/// A utility library for useful and common Git operations
 /// </summary>
 public static class GitUtilRegistrar
 {
