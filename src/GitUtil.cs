@@ -2,10 +2,14 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
 using System.Threading.Tasks;
 using LibGit2Sharp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Polly;
+using Polly.Retry;
 using Soenneker.Extensions.Configuration;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory;
@@ -22,12 +26,32 @@ public class GitUtil : IGitUtil
     private readonly IDirectoryUtil _directoryUtil;
     private readonly IProcessUtil _processUtil;
 
+    private readonly Lazy<AsyncRetryPolicy> _tooManyRequestsRetryPolicy;
+
     public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil)
     {
         _config = config;
         _logger = logger;
         _directoryUtil = directoryUtil;
         _processUtil = processUtil;
+
+        _tooManyRequestsRetryPolicy = new Lazy<AsyncRetryPolicy>(() => Policy
+            .Handle<HttpRequestException>(ex =>
+            {
+                if (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    _logger.LogWarning("429 detected: slowing our requests...");
+                    return true;
+                }
+
+                return false;
+            })
+            .WaitAndRetryAsync(new[]
+            {
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(4)
+            }));
     }
 
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -244,10 +268,11 @@ public class GitUtil : IGitUtil
 
                 Branch localMainBranch = repo.Branches["refs/heads/main"];
 
-                repo.Network.Push(localMainBranch, options);
-
-                if (delayOnSuccess)
-                    await Task.Delay(1000).ConfigureAwait(false);
+                await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
+                {
+                    repo.Network.Push(localMainBranch, options);
+                    return Task.CompletedTask;
+                });
             }
         }
         catch (Exception e)
@@ -315,12 +340,10 @@ public class GitUtil : IGitUtil
             {
                 finalDirectories.Add(item);
 
-                orderedDirectories.RemoveAll(dir => dir.StartsWith(item));
+                orderedDirectories.RemoveAll(dir => dir.StartsWith(item + Path.DirectorySeparatorChar));
             }
-            else
-            {
-                index++;
-            }
+
+            index++;
         }
 
         return finalDirectories;

@@ -20,7 +20,7 @@ public class GitUtilTests : FixturedUnitTest
     [LocalFact]
     public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
-        var result = _util.GetAllGitRepositoriesRecursively(@"c:\git");
+        var result = _util.GetAllGitRepositoriesRecursively(@"c:\git\soenneker");
         result.Should().NotBeNullOrEmpty();
     }
 }
