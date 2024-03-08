@@ -43,7 +43,7 @@
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
       <PackageReference Include="Polly" Version="8.3.1" />
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="2.1.218" />
-      <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.154" />
+      <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.155" />
       <PackageReference Include="Soenneker.Utils.Process" Version="2.1.268" />
     </ItemGroup>
 </Project>
