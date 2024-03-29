@@ -46,12 +46,12 @@ public class GitUtil : IGitUtil
 
                 return false;
             })
-            .WaitAndRetryAsync(new[]
-            {
+            .WaitAndRetryAsync(
+            [
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(2),
                 TimeSpan.FromSeconds(4)
-            }));
+            ]));
     }
 
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -326,6 +326,8 @@ public class GitUtil : IGitUtil
 
     public List<string> GetAllGitRepositoriesRecursively(string directory)
     {
+        _logger.LogDebug("Getting all git repositories recursively in directory ({directory})...", directory);
+
         var finalDirectories = new List<string>();
 
         List<string> orderedDirectories = DirectoryUtil.GetDirectoriesOrderedByLevels(directory);
