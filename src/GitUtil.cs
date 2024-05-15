@@ -11,6 +11,8 @@ using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Retry;
 using Soenneker.Extensions.Configuration;
+using Soenneker.Extensions.Task;
+using Soenneker.Extensions.ValueTask;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory;
 using Soenneker.Utils.Directory.Abstract;
@@ -102,7 +104,7 @@ public class GitUtil : IGitUtil
 
         foreach (string repo in allRepos)
         {
-            await Push(repo, username, token, delayOnSuccess).ConfigureAwait(false);
+            await Push(repo, username, token, delayOnSuccess).NoSync();
         }
     }
 
@@ -110,16 +112,14 @@ public class GitUtil : IGitUtil
     {
         try
         {
-            using (var repo = new Repository(directory))
-            {
-                Remote? remote = repo.Network.Remotes["origin"];
+            using var repo = new Repository(directory);
+            Remote? remote = repo.Network.Remotes["origin"];
 
-                _logger.LogInformation("Switching to remote branch from {url} in directory {directory}...", remote.Url, directory);
+            _logger.LogInformation("Switching to remote branch from {url} in directory {directory}...", remote.Url, directory);
 
-                const string trackedBranchName = "main";
-                Branch mainBranch = repo.Branches[trackedBranchName];
-                Commands.Checkout(repo, mainBranch, new CheckoutOptions {CheckoutModifiers = CheckoutModifiers.Force});
-            }
+            const string trackedBranchName = "main";
+            Branch mainBranch = repo.Branches[trackedBranchName];
+            Commands.Checkout(repo, mainBranch, new CheckoutOptions {CheckoutModifiers = CheckoutModifiers.Force});
         }
         catch (Exception e)
         {
@@ -129,11 +129,9 @@ public class GitUtil : IGitUtil
 
     public bool IsRepositoryDirty(string directory)
     {
-        using (var repo = new Repository(directory))
-        {
-            RepositoryStatus status = repo.RetrieveStatus();
-            return status.IsDirty;
-        }
+        using var repo = new Repository(directory);
+        RepositoryStatus status = repo.RetrieveStatus();
+        return status.IsDirty;
     }
 
     public bool IsRepository(string directory)
@@ -168,7 +166,7 @@ public class GitUtil : IGitUtil
 
     public async ValueTask RunCommand(string command, string directory)
     {
-        _ = await _processUtil.StartProcess("git", directory, command, true, true);
+        _ = await _processUtil.StartProcess("git", directory, command, true, true).NoSync();
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
@@ -180,30 +178,28 @@ public class GitUtil : IGitUtil
 
         try
         {
-            using (var repo = new Repository(directory))
-            {
-                Remote? remote = repo.Network.Remotes["origin"];
+            using var repo = new Repository(directory);
+            Remote? remote = repo.Network.Remotes["origin"];
 
-                url = remote.Url;
+            url = remote.Url;
 
-                _logger.LogInformation("Pulling from ({url}) in directory ({directory})...", url, directory);
+            _logger.LogInformation("Pulling from ({url}) in directory ({directory})...", url, directory);
 
-                MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow),
-                    new PullOptions
+            MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow),
+                new PullOptions
+                {
+                    FetchOptions = new FetchOptions(),
+                    MergeOptions = new MergeOptions
                     {
-                        FetchOptions = new FetchOptions(),
-                        MergeOptions = new MergeOptions
-                        {
-                            FailOnConflict = true,
-                            CommitOnSuccess = false
-                        }
-                    });
+                        FailOnConflict = true,
+                        CommitOnSuccess = false
+                    }
+                });
 
-                if (mergeResult.Status == MergeStatus.Conflicts)
-                    _logger.LogError("Conflicted for repo ({url}) in directory ({directory}), cannot merge!", url, directory);
-                else
-                    _logger.LogDebug("Completed pull");
-            }
+            if (mergeResult.Status == MergeStatus.Conflicts)
+                _logger.LogError("Conflicted for repo ({url}) in directory ({directory}), cannot merge!", url, directory);
+            else
+                _logger.LogDebug("Completed pull");
         }
         catch (Exception e)
         {
@@ -224,16 +220,15 @@ public class GitUtil : IGitUtil
                 return;
             }
 
-            using (var repo = new Repository(directory))
-            {
-                _logger.LogInformation("Committing changes in directory ({directory}) ...", directory);
+            using var repo = new Repository(directory);
 
-                var signature = new Signature(name, email, DateTimeOffset.UtcNow);
+            _logger.LogInformation("Committing changes in directory ({directory}) ...", directory);
 
-                // Adds files that are not indexed yet
-                Commands.Stage(repo, "*");
-                repo.Commit(message, signature, signature);
-            }
+            var signature = new Signature(name, email, DateTimeOffset.UtcNow);
+
+            // Adds files that are not indexed yet
+            Commands.Stage(repo, "*");
+            repo.Commit(message, signature, signature);
         }
         catch (Exception e)
         {
@@ -245,35 +240,34 @@ public class GitUtil : IGitUtil
     {
         try
         {
-            using (var repo = new Repository(directory))
+            using var repo = new Repository(directory);
+
+            Remote? remote = repo.Network.Remotes["origin"];
+
+            _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
+
+            if (!HasChangesToPush(repo))
             {
-                Remote? remote = repo.Network.Remotes["origin"];
-
-                _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
-
-                if (!HasChangesToPush(repo))
-                {
-                    return;
-                }
-
-                var options = new PushOptions
-                {
-                    CredentialsProvider = (url, usernameFromUrl, types) =>
-                        new UsernamePasswordCredentials
-                        {
-                            Username = username,
-                            Password = token
-                        }
-                };
-
-                Branch localMainBranch = repo.Branches["refs/heads/main"];
-
-                await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
-                {
-                    repo.Network.Push(localMainBranch, options);
-                    return Task.CompletedTask;
-                });
+                return;
             }
+
+            var options = new PushOptions
+            {
+                CredentialsProvider = (url, usernameFromUrl, types) =>
+                    new UsernamePasswordCredentials
+                    {
+                        Username = username,
+                        Password = token
+                    }
+            };
+
+            Branch localMainBranch = repo.Branches["refs/heads/main"];
+
+            await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
+            {
+                repo.Network.Push(localMainBranch, options);
+                return Task.CompletedTask;
+            }).NoSync();
         }
         catch (Exception e)
         {
@@ -287,13 +281,12 @@ public class GitUtil : IGitUtil
 
         try
         {
-            using (var repo = new Repository(directory))
-            {
-                if (IsFileInIndex(repo, relativeFilePath))
-                    return;
+            using var repo = new Repository(directory);
 
-                Commands.Stage(repo, relativeFilePath);
-            }
+            if (IsFileInIndex(repo, relativeFilePath))
+                return;
+
+            Commands.Stage(repo, relativeFilePath);
         }
         catch (Exception e)
         {
@@ -306,17 +299,16 @@ public class GitUtil : IGitUtil
     {
         try
         {
-            using (var repo = new Repository(directory))
-            {
-                Remote? remote = repo.Network.Remotes["origin"];
+            using var repo = new Repository(directory);
 
-                _logger.LogInformation("Fetching from {url} in ({directory}) ...", remote.Url, directory);
+            Remote? remote = repo.Network.Remotes["origin"];
 
-                Commands.Fetch(repo, remote.Url, new string[] { },
-                    new FetchOptions(), "");
+            _logger.LogInformation("Fetching from {url} in ({directory}) ...", remote.Url, directory);
 
-                _logger.LogInformation("Completed fetch");
-            }
+            Commands.Fetch(repo, remote.Url, Array.Empty<string>(),
+                new FetchOptions(), "");
+
+            _logger.LogInformation("Completed fetch");
         }
         catch (Exception e)
         {
