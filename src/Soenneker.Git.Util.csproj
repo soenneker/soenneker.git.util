@@ -42,7 +42,7 @@
       <PackageReference Include="LibGit2Sharp" Version="0.30.0" />
       <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
       <PackageReference Include="Polly" Version="8.4.1" />
-      <PackageReference Include="Soenneker.Extensions.Configuration" Version="2.1.382" />
+      <PackageReference Include="Soenneker.Extensions.Configuration" Version="2.1.383" />
       <PackageReference Include="Soenneker.Extensions.Task" Version="2.1.61" />
       <PackageReference Include="Soenneker.Extensions.ValueTask" Version="2.1.46" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="2.1.282" />
