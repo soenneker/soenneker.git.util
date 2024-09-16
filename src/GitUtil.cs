@@ -48,12 +48,9 @@ public class GitUtil : IGitUtil
 
                 return false;
             })
-            .WaitAndRetryAsync(
-            [
-                TimeSpan.FromSeconds(1),
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(4)
-            ]));
+            .WaitAndRetryAsync(retryCount: 5,
+                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                onRetry: (exception, timeSpan, retryCount, context) => { _logger.LogWarning($"Retry {retryCount} after {timeSpan.TotalSeconds} seconds due to: {exception.Message}"); }));
     }
 
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -62,8 +59,9 @@ public class GitUtil : IGitUtil
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
             Pull(repo);
         }
     }
@@ -72,8 +70,9 @@ public class GitUtil : IGitUtil
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
             Fetch(repo);
         }
     }
@@ -82,8 +81,9 @@ public class GitUtil : IGitUtil
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
             SwitchToRemoteBranch(repo);
         }
     }
@@ -92,8 +92,9 @@ public class GitUtil : IGitUtil
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
             Commit(repo, commitMessage);
         }
     }
@@ -102,8 +103,9 @@ public class GitUtil : IGitUtil
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
             await Push(repo, username, token, delayOnSuccess).NoSync();
         }
     }
@@ -240,34 +242,38 @@ public class GitUtil : IGitUtil
     {
         try
         {
-            using var repo = new Repository(directory);
-
-            Remote? remote = repo.Network.Remotes["origin"];
-
-            _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
-
-            if (!HasChangesToPush(repo))
+            using (var repo = new Repository(directory))
             {
-                return;
+                Remote? remote = repo.Network.Remotes["origin"];
+
+                _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
+
+                if (!HasChangesToPush(repo))
+                {
+                    return;
+                }
+
+                var options = new PushOptions
+                {
+                    CredentialsProvider = (url, usernameFromUrl, types) =>
+                        new UsernamePasswordCredentials
+                        {
+                            Username = username,
+                            Password = token
+                        }
+                };
+
+                Branch localMainBranch = repo.Branches["refs/heads/main"];
+
+                // Capture the repo in a local variable to avoid disposal issues
+                Repository repoToPush = repo;
+
+                await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
+                {
+                    repoToPush.Network.Push(localMainBranch, options);
+                    return Task.CompletedTask;
+                }).NoSync();
             }
-
-            var options = new PushOptions
-            {
-                CredentialsProvider = (url, usernameFromUrl, types) =>
-                    new UsernamePasswordCredentials
-                    {
-                        Username = username,
-                        Password = token
-                    }
-            };
-
-            Branch localMainBranch = repo.Branches["refs/heads/main"];
-
-            await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
-            {
-                repo.Network.Push(localMainBranch, options);
-                return Task.CompletedTask;
-            }).NoSync();
         }
         catch (Exception e)
         {
@@ -345,12 +351,16 @@ public class GitUtil : IGitUtil
 
     public List<string> GetAllDirtyRepositories(string directory)
     {
+        _logger.LogDebug("Getting all 'dirty' repositories in directory ({directory})...", directory);
+
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
         var result = new List<string>();
 
-        foreach (string repo in allRepos)
+        for (var i = 0; i < allRepos.Count; i++)
         {
+            string repo = allRepos[i];
+
             if (IsRepositoryDirty(repo))
             {
                 result.Add(repo);
