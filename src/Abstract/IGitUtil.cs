@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Soenneker.Git.Util.Abstract;
@@ -26,7 +27,7 @@ public interface IGitUtil
     /// Uses Process.Start("git", command) to run a git command, in a particular working directory. <para/>
     /// Awaits until the command is complete.
     /// </summary>
-    ValueTask RunCommand(string command, string directory);
+    ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates a temp directory and then clones the repository into it

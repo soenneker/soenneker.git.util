@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using LibGit2Sharp;
 using Microsoft.Extensions.Configuration;
@@ -166,9 +167,9 @@ public class GitUtil : IGitUtil
         return dir;
     }
 
-    public async ValueTask RunCommand(string command, string directory)
+    public async ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default)
     {
-        _ = await _processUtil.StartProcess("git", directory, command, true, true).NoSync();
+        _ = await _processUtil.StartProcess("git", directory, command, true, true, cancellationToken: cancellationToken).NoSync();
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
