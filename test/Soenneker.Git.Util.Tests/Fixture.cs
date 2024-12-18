@@ -11,7 +11,7 @@ namespace Soenneker.Git.Util.Tests;
 
 public class Fixture : UnitFixture
 {
-    public override Task InitializeAsync()
+    public override System.Threading.Tasks.ValueTask InitializeAsync()
     {
         SetupIoC(Services);
 

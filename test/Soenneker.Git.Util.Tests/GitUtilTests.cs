@@ -1,9 +1,9 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Soenneker.Facts.Local;
 using Soenneker.Tests.FixturedUnit;
 using Soenneker.Git.Util.Abstract;
 using Xunit;
-using Xunit.Abstractions;
+
 
 namespace Soenneker.Git.Util.Tests;
 
