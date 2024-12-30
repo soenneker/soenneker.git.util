@@ -169,7 +169,7 @@ public class GitUtil : IGitUtil
 
     public async ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default)
     {
-        _ = await _processUtil.StartProcess("git", directory, command, true, true, cancellationToken: cancellationToken).NoSync();
+        _ = await _processUtil.Start("git", directory, command, true, true, cancellationToken: cancellationToken).NoSync();
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
@@ -297,7 +297,7 @@ public class GitUtil : IGitUtil
         }
         catch (Exception e)
         {
-            Console.WriteLine(e);
+            _logger.LogError(e, "Could not add {relativeFilePath} to index", relativeFilePath);
             throw;
         }
     }
