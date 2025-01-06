@@ -70,4 +70,6 @@ public interface IGitUtil
     /// Dirty = uncommited/unpushed
     /// </summary>
     List<string> GetAllDirtyRepositories(string directory);
+
+    ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message);
 }

@@ -414,4 +414,16 @@ public class GitUtil : IGitUtil
 
         return true;
     }
+
+    public async ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message)
+    {
+        if (!IsRepositoryDirty(directory))
+        {
+            _logger.LogInformation("No changes to commit.");
+            return;
+        }
+
+        Commit(directory, message, name, email);
+        await Push(directory, username, token).NoSync();
+    }
 }
