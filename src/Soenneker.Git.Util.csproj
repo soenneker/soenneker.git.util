@@ -44,6 +44,6 @@
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="3.0.594" />
       <PackageReference Include="Soenneker.Extensions.ValueTask" Version="3.0.75" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="3.0.490" />
-      <PackageReference Include="Soenneker.Utils.Process" Version="3.0.910" />
+      <PackageReference Include="Soenneker.Utils.Process" Version="3.0.912" />
     </ItemGroup>
 </Project>
