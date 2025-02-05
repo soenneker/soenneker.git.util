@@ -1,9 +1,9 @@
+using System.Collections.Generic;
 using FluentAssertions;
 using Soenneker.Facts.Local;
 using Soenneker.Tests.FixturedUnit;
 using Soenneker.Git.Util.Abstract;
 using Xunit;
-
 
 namespace Soenneker.Git.Util.Tests;
 
@@ -20,7 +20,19 @@ public class GitUtilTests : FixturedUnitTest
     [LocalFact]
     public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
-        var result = _util.GetAllGitRepositoriesRecursively(@"c:\git\soenneker");
+        List<string> result = _util.GetAllGitRepositoriesRecursively(@"");
         result.Should().NotBeNullOrEmpty();
+    }
+
+    [LocalFact]
+    public void Fetch_should_fetch()
+    {
+        _util.Fetch(@"");
+    }
+
+    [LocalFact]
+    public void Pull_should_pull()
+    {
+        _util.Pull(@"");
     }
 }

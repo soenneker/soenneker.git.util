@@ -38,20 +38,17 @@ public class GitUtil : IGitUtil
         _directoryUtil = directoryUtil;
         _processUtil = processUtil;
 
-        _tooManyRequestsRetryPolicy = new Lazy<AsyncRetryPolicy>(() => Policy
-            .Handle<HttpRequestException>(ex =>
+        _tooManyRequestsRetryPolicy = new Lazy<AsyncRetryPolicy>(() => Policy.Handle<HttpRequestException>(ex =>
+        {
+            if (ex.StatusCode == HttpStatusCode.TooManyRequests)
             {
-                if (ex.StatusCode == HttpStatusCode.TooManyRequests)
-                {
-                    _logger.LogWarning("429 detected: slowing our requests...");
-                    return true;
-                }
+                _logger.LogWarning("429 detected: slowing our requests...");
+                return true;
+            }
 
-                return false;
-            })
-            .WaitAndRetryAsync(retryCount: 5,
-                sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-                onRetry: (exception, timeSpan, retryCount, context) => { _logger.LogWarning($"Retry {retryCount} after {timeSpan.TotalSeconds} seconds due to: {exception.Message}"); }));
+            return false;
+        }).WaitAndRetryAsync(retryCount: 5, sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+            onRetry: (exception, timeSpan, retryCount, context) => { _logger.LogWarning($"Retry {retryCount} after {timeSpan.TotalSeconds} seconds due to: {exception.Message}"); }));
     }
 
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -188,16 +185,15 @@ public class GitUtil : IGitUtil
 
             _logger.LogInformation("Pulling from ({url}) in directory ({directory})...", url, directory);
 
-            MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow),
-                new PullOptions
+            MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow), new PullOptions
+            {
+                FetchOptions = new FetchOptions(),
+                MergeOptions = new MergeOptions
                 {
-                    FetchOptions = new FetchOptions(),
-                    MergeOptions = new MergeOptions
-                    {
-                        FailOnConflict = true,
-                        CommitOnSuccess = false
-                    }
-                });
+                    FailOnConflict = true,
+                    CommitOnSuccess = false
+                }
+            });
 
             if (mergeResult.Status == MergeStatus.Conflicts)
                 _logger.LogError("Conflicted for repo ({url}) in directory ({directory}), cannot merge!", url, directory);
@@ -243,38 +239,35 @@ public class GitUtil : IGitUtil
     {
         try
         {
-            using (var repo = new Repository(directory))
+            using var repo = new Repository(directory);
+            Remote? remote = repo.Network.Remotes["origin"];
+
+            _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
+
+            if (!HasChangesToPush(repo))
             {
-                Remote? remote = repo.Network.Remotes["origin"];
-
-                _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
-
-                if (!HasChangesToPush(repo))
-                {
-                    return;
-                }
-
-                var options = new PushOptions
-                {
-                    CredentialsProvider = (url, usernameFromUrl, types) =>
-                        new UsernamePasswordCredentials
-                        {
-                            Username = username,
-                            Password = token
-                        }
-                };
-
-                Branch localMainBranch = repo.Branches["refs/heads/main"];
-
-                // Capture the repo in a local variable to avoid disposal issues
-                Repository repoToPush = repo;
-
-                await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
-                {
-                    repoToPush.Network.Push(localMainBranch, options);
-                    return Task.CompletedTask;
-                }).NoSync();
+                return;
             }
+
+            var options = new PushOptions
+            {
+                CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
+                {
+                    Username = username,
+                    Password = token
+                }
+            };
+
+            Branch localMainBranch = repo.Branches["refs/heads/main"];
+
+            // Capture the repo in a local variable to avoid disposal issues
+            Repository repoToPush = repo;
+
+            await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
+            {
+                repoToPush.Network.Push(localMainBranch, options);
+                return Task.CompletedTask;
+            }).NoSync();
         }
         catch (Exception e)
         {
@@ -312,8 +305,9 @@ public class GitUtil : IGitUtil
 
             _logger.LogInformation("Fetching from {url} in ({directory}) ...", remote.Url, directory);
 
-            Commands.Fetch(repo, remote.Url, Array.Empty<string>(),
-                new FetchOptions(), "");
+            IEnumerable<string> refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
+
+            Commands.Fetch(repo, remote.Name, refSpecs, null, "");
 
             _logger.LogInformation("Completed fetch");
         }
@@ -384,7 +378,7 @@ public class GitUtil : IGitUtil
         return false;
     }
 
-    private bool HasChangesToPush(IRepository repo)
+    private bool HasChangesToPush(Repository repo)
     {
         Branch localMainBranch = repo.Branches["refs/heads/main"];
 

@@ -14,20 +14,26 @@ public static class GitUtilRegistrar
     /// <summary>
     /// Adds <see cref="IGitUtil"/> as a singleton service. <para/>
     /// </summary>
-    public static void AddGitUtilAsSingleton(this IServiceCollection services)
+    public static IServiceCollection AddGitUtilAsSingleton(this IServiceCollection services)
     {
-        services.TryAddSingleton<IGitUtil, GitUtil>();
         services.AddDirectoryUtilAsSingleton();
         services.AddProcessUtilAsSingleton();
+
+        services.TryAddSingleton<IGitUtil, GitUtil>();
+
+        return services;
     }
 
     /// <summary>
     /// Adds <see cref="IGitUtil"/> as a scoped service. <para/>
     /// </summary>
-    public static void AddGitUtilAsScoped(this IServiceCollection services)
+    public static IServiceCollection AddGitUtilAsScoped(this IServiceCollection services)
     {
-        services.TryAddScoped<IGitUtil, GitUtil>();
         services.AddDirectoryUtilAsScoped();
         services.AddProcessUtilAsScoped();
+
+        services.TryAddScoped<IGitUtil, GitUtil>();
+
+        return services;
     }
 }
