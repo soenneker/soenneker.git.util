@@ -43,7 +43,7 @@
       <PackageReference Include="Polly" Version="8.5.2" />
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="3.0.642" />
       <PackageReference Include="Soenneker.Extensions.ValueTask" Version="3.0.78" />
-      <PackageReference Include="Soenneker.Utils.Directory" Version="3.0.602" />
+      <PackageReference Include="Soenneker.Utils.Directory" Version="3.0.604" />
       <PackageReference Include="Soenneker.Utils.Process" Version="3.0.1128" />
     </ItemGroup>
 </Project>
