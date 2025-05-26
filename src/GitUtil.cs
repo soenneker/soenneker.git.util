@@ -22,7 +22,7 @@ using Soenneker.Utils.Process.Abstract;
 namespace Soenneker.Git.Util;
 
 ///<inheritdoc cref="IGitUtil"/>
-public class GitUtil : IGitUtil
+public sealed class GitUtil : IGitUtil
 {
     private readonly IConfiguration _config;
     private readonly ILogger<GitUtil> _logger;
@@ -97,14 +97,14 @@ public class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask PushAllRepositories(string directory, string username, string token, bool delayOnSuccess = true)
+    public async ValueTask PushAllRepositories(string directory, string username, string token, CancellationToken cancellationToken = default)
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
         for (var i = 0; i < allRepos.Count; i++)
         {
             string repo = allRepos[i];
-            await Push(repo, username, token, delayOnSuccess).NoSync();
+            await Push(repo, username, token, cancellationToken).NoSync();
         }
     }
 
@@ -166,7 +166,7 @@ public class GitUtil : IGitUtil
 
     public async ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default)
     {
-        _ = await _processUtil.Start("git", directory, command, true, true, cancellationToken: cancellationToken).NoSync();
+        _ = await _processUtil.Start("git", directory, command, true, cancellationToken: cancellationToken).NoSync();
     }
 
     public void Pull(string directory, string? name = null, string? email = null)
@@ -235,7 +235,7 @@ public class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask Push(string directory, string username, string token, bool delayOnSuccess = true)
+    public async ValueTask Push(string directory, string username, string token, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -409,7 +409,7 @@ public class GitUtil : IGitUtil
         return true;
     }
 
-    public async ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message)
+    public async ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message, CancellationToken cancellationToken = default)
     {
         if (!IsRepositoryDirty(directory))
         {
@@ -418,6 +418,6 @@ public class GitUtil : IGitUtil
         }
 
         Commit(directory, message, name, email);
-        await Push(directory, username, token).NoSync();
+        await Push(directory, username, token, cancellationToken).NoSync();
     }
 }

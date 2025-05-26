@@ -16,10 +16,7 @@ public static class GitUtilRegistrar
     /// </summary>
     public static IServiceCollection AddGitUtilAsSingleton(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsSingleton();
-        services.AddProcessUtilAsSingleton();
-
-        services.TryAddSingleton<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().TryAddSingleton<IGitUtil, GitUtil>();
 
         return services;
     }
@@ -29,10 +26,7 @@ public static class GitUtilRegistrar
     /// </summary>
     public static IServiceCollection AddGitUtilAsScoped(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsScoped();
-        services.AddProcessUtilAsScoped();
-
-        services.TryAddScoped<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().TryAddScoped<IGitUtil, GitUtil>();
 
         return services;
     }
