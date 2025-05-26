@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using FluentAssertions;
+using AwesomeAssertions;
 using Soenneker.Facts.Local;
 using Soenneker.Tests.FixturedUnit;
 using Soenneker.Git.Util.Abstract;
