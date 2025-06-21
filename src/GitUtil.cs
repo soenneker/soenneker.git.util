@@ -175,9 +175,9 @@ public sealed class GitUtil : IGitUtil
         _logger.LogDebug("Finished cloning uri ({uri}) into directory ({dir})", uri, directory);
     }
 
-    public string CloneToTempDirectory(string uri)
+    public async ValueTask<string> CloneToTempDirectory(string uri, CancellationToken cancellationToken = default)
     {
-        string dir = _directoryUtil.CreateTempDirectory();
+        string dir = await _directoryUtil.CreateTempDirectory(cancellationToken);
 
         Clone(uri, dir);
 

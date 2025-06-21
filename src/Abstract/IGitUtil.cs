@@ -18,7 +18,7 @@ public interface IGitUtil
     /// Clones a Git repository into a temporary directory.
     /// </summary>
     /// <returns>The path of the temporary directory the repository was cloned into.</returns>
-    string CloneToTempDirectory(string uri);
+    ValueTask<string> CloneToTempDirectory(string uri, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Pulls the latest changes for all Git repositories recursively found in the specified directory.
