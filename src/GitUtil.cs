@@ -39,16 +39,23 @@ public sealed class GitUtil : IGitUtil
         _processUtil = processUtil;
 
         _tooManyRequestsRetryPolicy = new Lazy<AsyncRetryPolicy>(() => Policy.Handle<HttpRequestException>(ex =>
-        {
-            if (ex.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                _logger.LogWarning("429 detected: slowing our requests...");
-                return true;
-            }
+                                                                             {
+                                                                                 if (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                                                                                 {
+                                                                                     _logger.LogWarning("429 detected: slowing our requests...");
+                                                                                     return true;
+                                                                                 }
 
-            return false;
-        }).WaitAndRetryAsync(retryCount: 5, sleepDurationProvider: retryAttempt => TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
-            onRetry: (exception, timeSpan, retryCount, context) => { _logger.LogWarning($"Retry {retryCount} after {timeSpan.TotalSeconds} seconds due to: {exception.Message}"); }));
+                                                                                 return false;
+                                                                             })
+                                                                             .WaitAndRetryAsync(retryCount: 5,
+                                                                                 sleepDurationProvider: retryAttempt =>
+                                                                                     TimeSpan.FromSeconds(Math.Pow(2, retryAttempt)),
+                                                                                 onRetry: (exception, timeSpan, retryCount, context) =>
+                                                                                 {
+                                                                                     _logger.LogWarning(
+                                                                                         $"Retry {retryCount} after {timeSpan.TotalSeconds} seconds due to: {exception.Message}");
+                                                                                 }));
     }
 
     // TODO: Probably should break these 'bulk' operations into a separate class
@@ -97,14 +104,14 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask PushAllRepositories(string directory, string username, string token, CancellationToken cancellationToken = default)
+    public async ValueTask PushAllRepositories(string directory, string token, CancellationToken cancellationToken = default)
     {
         List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
 
         for (var i = 0; i < allRepos.Count; i++)
         {
             string repo = allRepos[i];
-            await Push(repo, username, token, cancellationToken).NoSync();
+            await Push(repo, token, cancellationToken).NoSync();
         }
     }
 
@@ -143,9 +150,22 @@ public sealed class GitUtil : IGitUtil
     {
         _logger.LogInformation("Cloning uri ({uri}) into directory ({dir}) ...", uri, directory);
 
+        var token = _config.GetValueStrict<string>("Git:Token");
+
+        var fetchOptions = new FetchOptions
+        {
+            CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
+            {
+                Username = "x-access-token",
+                Password = token
+            }
+        };
+
+        var options = new CloneOptions(fetchOptions);
+
         try
         {
-            Repository.Clone(uri, directory);
+            Repository.Clone(uri, directory, options);
         }
         catch (Exception e)
         {
@@ -175,6 +195,7 @@ public sealed class GitUtil : IGitUtil
 
         name ??= _config.GetValueStrict<string>("Git:Name");
         email ??= _config.GetValueStrict<string>("Git:Email");
+        var token = _config.GetValueStrict<string>("Git:Token");
 
         try
         {
@@ -187,7 +208,14 @@ public sealed class GitUtil : IGitUtil
 
             MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow), new PullOptions
             {
-                FetchOptions = new FetchOptions(),
+                FetchOptions = new FetchOptions
+                {
+                    CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
+                    {
+                        Username = "x-access-token",
+                        Password = token
+                    }
+                },
                 MergeOptions = new MergeOptions
                 {
                     FailOnConflict = true,
@@ -235,7 +263,7 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask Push(string directory, string username, string token, CancellationToken cancellationToken = default)
+    public async ValueTask Push(string directory, string token, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -253,7 +281,7 @@ public sealed class GitUtil : IGitUtil
             {
                 CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
                 {
-                    Username = username,
+                    Username = "x-access-token",
                     Password = token
                 }
             };
@@ -264,10 +292,11 @@ public sealed class GitUtil : IGitUtil
             Repository repoToPush = repo;
 
             await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
-            {
-                repoToPush.Network.Push(localMainBranch, options);
-                return Task.CompletedTask;
-            }).NoSync();
+                                             {
+                                                 repoToPush.Network.Push(localMainBranch, options);
+                                                 return Task.CompletedTask;
+                                             })
+                                             .NoSync();
         }
         catch (Exception e)
         {
@@ -297,6 +326,17 @@ public sealed class GitUtil : IGitUtil
 
     public void Fetch(string directory)
     {
+        var token = _config.GetValueStrict<string>("Git:Token");
+
+        var fetchOptions = new FetchOptions
+        {
+            CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
+            {
+                Username = "x-access-token",
+                Password = token
+            }
+        };
+
         try
         {
             using var repo = new Repository(directory);
@@ -307,7 +347,7 @@ public sealed class GitUtil : IGitUtil
 
             IEnumerable<string> refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
 
-            Commands.Fetch(repo, remote.Name, refSpecs, null, "");
+            Commands.Fetch(repo, remote.Name, refSpecs, fetchOptions, "");
 
             _logger.LogInformation("Completed fetch");
         }
@@ -409,7 +449,8 @@ public sealed class GitUtil : IGitUtil
         return true;
     }
 
-    public async ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message, CancellationToken cancellationToken = default)
+    public async ValueTask CommitAndPush(string directory, string name, string email, string token, string message,
+        CancellationToken cancellationToken = default)
     {
         if (!IsRepositoryDirty(directory))
         {
@@ -418,6 +459,6 @@ public sealed class GitUtil : IGitUtil
         }
 
         Commit(directory, message, name, email);
-        await Push(directory, username, token, cancellationToken).NoSync();
+        await Push(directory, token, cancellationToken).NoSync();
     }
 }

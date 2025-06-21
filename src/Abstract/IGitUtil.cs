@@ -43,7 +43,7 @@ public interface IGitUtil
     /// <summary>
     /// Pushes all repositories in the directory using the given credentials.
     /// </summary>
-    ValueTask PushAllRepositories(string directory, string username, string token, CancellationToken cancellationToken = default);
+    ValueTask PushAllRepositories(string directory, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Switches the specified repository to the main remote branch (origin/main).
@@ -78,7 +78,7 @@ public interface IGitUtil
     /// <summary>
     /// Pushes commits from the given repository to its remote using provided credentials.
     /// </summary>
-    ValueTask Push(string directory, string username, string token, CancellationToken cancellationToken = default);
+    ValueTask Push(string directory, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stages a file if it is not already present in the index.
@@ -103,5 +103,5 @@ public interface IGitUtil
     /// <summary>
     /// Commits and pushes a repository using the given credentials and message.
     /// </summary>
-    ValueTask CommitAndPush(string directory, string username, string name, string email, string token, string message, CancellationToken cancellationToken = default);
+    ValueTask CommitAndPush(string directory, string name, string email, string token, string message, CancellationToken cancellationToken = default);
 }
