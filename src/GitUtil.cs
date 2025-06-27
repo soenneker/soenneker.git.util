@@ -87,9 +87,19 @@ public sealed class GitUtil : IGitUtil
             _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", _gitBinaryPath, arguments, workingDirectory ?? "<null>");
         }
 
+        if (env != null)
+            env.Add("GIT_TERMINAL_PROMPT", "0"); // Disable terminal prompts for credentials
+        else
+        {
+            env = new Dictionary<string, string>
+            {
+                ["GIT_TERMINAL_PROMPT"] = "0"
+            };
+        }
+
         return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, throwOnNonZero, environmentalVars: env,
-                                                    cancellationToken: cancellationToken)
-                                                .NoSync();
+                                     cancellationToken: cancellationToken)
+                                 .NoSync();
     }
 
     private string BuildAuthArg(string? token = null)
