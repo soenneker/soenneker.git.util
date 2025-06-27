@@ -45,7 +45,7 @@
       <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="3.0.54" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="3.0.83" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="3.0.707" />
-      <PackageReference Include="Soenneker.Utils.Process" Version="3.0.1315" />
+      <PackageReference Include="Soenneker.Utils.Process" Version="3.0.1316" />
       <PackageReference Include="Soenneker.Utils.Runtime" Version="3.0.846" />
     </ItemGroup>
 </Project>
