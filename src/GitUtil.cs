@@ -30,6 +30,7 @@ public sealed class GitUtil : IGitUtil
     private readonly string _configName;
     private readonly string _configEmail;
     private readonly string _defaultBranch;
+    private readonly bool _logGitCommands;
 
     // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  Services  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
     private readonly ILogger<GitUtil> _logger;
@@ -53,6 +54,7 @@ public sealed class GitUtil : IGitUtil
         _configName = config.GetValueStrict<string>("Git:Name");
         _configEmail = config.GetValueStrict<string>("Git:Email");
         _defaultBranch = config.GetValue<string>("Git:DefaultBranch") ?? "main";
+        _logGitCommands = config.GetValue<bool>("Git:Log");
 
         _gitBinaryPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? Path.Join(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe")
@@ -77,18 +79,23 @@ public sealed class GitUtil : IGitUtil
         };
     }
 
-    private async ValueTask<IReadOnlyList<string>> RunGit(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
+    private async ValueTask<List<string>> RunGit(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
         Dictionary<string, string>? env = null, CancellationToken cancellationToken = default)
     {
-        return await _processUtil
-                     .Start(_gitBinaryPath, workingDirectory, arguments, throwOnNonZero, environmentalVars: env, cancellationToken: cancellationToken)
-                     .NoSync();
+        if (_logGitCommands)
+        {
+            _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", _gitBinaryPath, arguments, workingDirectory ?? "<null>");
+        }
+
+        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, throwOnNonZero, environmentalVars: env,
+                                                    cancellationToken: cancellationToken)
+                                                .NoSync();
     }
 
     private string BuildAuthArg(string? token = null)
     {
         token ??= _configToken;
-        return $"-c http.extraHeader=\"Authorization: Bearer {token}\"";
+        return $"-c credential.helper= -c http.extraHeader=\"Authorization: Bearer {token}\"";
     }
 
     private static async Task ForEachRepo(IEnumerable<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
