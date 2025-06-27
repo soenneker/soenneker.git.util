@@ -21,31 +21,31 @@ public interface IGitUtil
     /// </param>
     /// <param name="parallel">Run pulls in parallel when <see langword="true"/>.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
+    ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Runs <c>git fetch</c> for every repository found under <paramref name="root"/>.
     /// </summary>
-    ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
+    ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// For each repository beneath <paramref name="root"/>, checks out the
     /// configured default branch and hard-resets it to the corresponding
     /// remote branch (<c>origin/&lt;defaultBranch&gt;</c>).
     /// </summary>
-    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
+    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stages <c>-A</c> and commits every dirty repository under
     /// <paramref name="root"/> with <paramref name="commitMessage"/>.
     /// </summary>
-    ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = true, CancellationToken cancellationToken = default);
+    ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Pushes the configured default branch for each repository found under
     /// <paramref name="root"/>.
     /// </summary>
-    ValueTask PushAllRepositories(string root, string token, bool parallel = true, CancellationToken cancellationToken = default);
+    ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Force-switches the specified repository to the default remote branch.

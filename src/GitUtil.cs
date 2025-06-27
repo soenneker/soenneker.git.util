@@ -107,32 +107,32 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default)
+    public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken).NoSync();
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Pull(repo, token, ct)).NoSync();
     }
 
-    public async ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default)
+    public async ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken).NoSync();
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct)).NoSync();
     }
 
-    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = true,
+    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false,
         CancellationToken cancellationToken = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken).NoSync();
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => SwitchToRemoteBranch(repo, token, ct)).NoSync();
     }
 
-    public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = true, CancellationToken ct = default)
+    public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken ct = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(root, ct).NoSync();
         await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken)).NoSync();
     }
 
-    public async ValueTask PushAllRepositories(string root, string token, bool parallel = true, CancellationToken ct = default)
+    public async ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken ct = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(root, ct).NoSync();
         await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Push(repo, token, cancellationToken)).NoSync();
