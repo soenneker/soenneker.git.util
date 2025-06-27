@@ -1,14 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Retry;
@@ -19,6 +9,17 @@ using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Path.Abstract;
 using Soenneker.Utils.Process.Abstract;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Soenneker.Git.Util;
 
@@ -105,7 +106,15 @@ public sealed class GitUtil : IGitUtil
     private string BuildAuthArg(string? token = null)
     {
         token ??= _configToken;
-        return $"-c credential.helper= -c http.extraHeader=\"Authorization: Bearer {token}\"";
+
+        //   Basic header value = base-64 of  ":" + PAT    (empty user name)
+        string basic = Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + token));
+        string header = $"Authorization: Basic {basic}";
+
+        // Apply to both github.com and codeload.github.com in one shot
+        return $"-c credential.helper= " +
+               $"-c http.https://github.com/.extraheader=\"{header}\" " +
+               $"-c http.https://codeload.github.com/.extraheader=\"{header}\"";
     }
 
     private static async Task ForEachRepo(IEnumerable<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
