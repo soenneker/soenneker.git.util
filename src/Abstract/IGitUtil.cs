@@ -127,5 +127,3 @@ public interface IGitUtil
     ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default);
 }
-
-}

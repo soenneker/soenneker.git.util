@@ -310,9 +310,12 @@ public sealed class GitUtil : IGitUtil
         try
         {
             await _retry429.ExecuteAsync(() =>
-                Task.Run(
-                    async () => await RunGit($"{BuildAuthArg(token)} push origin {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync(),
-                    cancellationToken)).NoSync();
+                               Task.Run(
+                                   async () => await RunGit($"{BuildAuthArg(token)} push origin {_defaultBranch}", directory,
+                                       cancellationToken: cancellationToken)
+                                   .NoSync(),
+                                   cancellationToken))
+                           .NoSync();
         }
         catch (Exception ex)
         {
