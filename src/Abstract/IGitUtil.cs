@@ -5,108 +5,127 @@ using System.Threading.Tasks;
 namespace Soenneker.Git.Util.Abstract;
 
 /// <summary>
-/// A utility interface for managing Git repositories using LibGit2Sharp and custom operations.
+/// High-level, asynchronous helpers for working with Git repositories –
+/// cloning, fetching, pulling, committing, pushing and bulk operations.
 /// </summary>
 public interface IGitUtil
 {
     /// <summary>
-    /// Clones a Git repository to the specified directory.
+    /// Performs a <c>git pull --ff-only</c> against every repository discovered
+    /// beneath <paramref name="root"/>.
     /// </summary>
-    ValueTask Clone(string uri, string directory, CancellationToken cancellationToken = default);
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="token">
+    /// Personal-access token used for authentication; if <see langword="null"/>,
+    /// the default token from configuration is used.
+    /// </param>
+    /// <param name="parallel">Run pulls in parallel when <see langword="true"/>.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clones a Git repository into a temporary directory.
+    /// Runs <c>git fetch</c> for every repository found under <paramref name="root"/>.
     /// </summary>
-    /// <returns>The path of the temporary directory the repository was cloned into.</returns>
-    ValueTask<string> CloneToTempDirectory(string uri, CancellationToken cancellationToken = default);
+    ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pulls the latest changes for all Git repositories recursively found in the specified directory.
+    /// For each repository beneath <paramref name="root"/>, checks out the
+    /// configured default branch and hard-resets it to the corresponding
+    /// remote branch (<c>origin/&lt;defaultBranch&gt;</c>).
     /// </summary>
-    ValueTask PullAllGitRepositories(string directory, CancellationToken cancellationToken = default);
+    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fetches all remote changes for all Git repositories recursively found in the specified directory.
+    /// Stages <c>-A</c> and commits every dirty repository under
+    /// <paramref name="root"/> with <paramref name="commitMessage"/>.
     /// </summary>
-    ValueTask FetchAllGitRepositories(string directory, CancellationToken cancellationToken = default);
+    ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Switches all repositories in the specified directory to the tracked remote branch (main).
+    /// Pushes the configured default branch for each repository found under
+    /// <paramref name="root"/>.
     /// </summary>
-    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string directory, CancellationToken cancellationToken = default);
+    ValueTask PushAllRepositories(string root, string token, bool parallel = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Commits all repositories with the given message.
+    /// Force-switches the specified repository to the default remote branch.
     /// </summary>
-    ValueTask CommitAllRepositories(string directory, string commitMessage, CancellationToken cancellationToken = default);
+    ValueTask SwitchToRemoteBranch(string directory, string? token = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pushes all repositories in the directory using the given credentials.
-    /// </summary>
-    ValueTask PushAllRepositories(string directory, string token, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Switches the specified repository to the main remote branch (origin/main).
-    /// </summary>
-    ValueTask SwitchToRemoteBranch(string directory, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Determines whether the given directory contains a Git repository with uncommitted changes.
+    /// Determines whether the repository has uncommitted or untracked changes.
     /// </summary>
     ValueTask<bool> IsRepositoryDirty(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether the specified directory is a valid Git repository.
+    /// Determines whether <paramref name="directory"/> is the root
+    /// of a Git work-tree.
     /// </summary>
     ValueTask<bool> IsRepository(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes a raw Git command in the given directory.
+    /// Clones <paramref name="uri"/> into <paramref name="directory"/>.
+    /// </summary>
+    ValueTask Clone(string uri, string directory, string? token = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Clones <paramref name="uri"/> into a newly created temporary directory
+    /// and returns that directory’s path.
+    /// </summary>
+    ValueTask<string> CloneToTempDirectory(string uri, string? token = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Executes an arbitrary Git <paramref name="command"/> in
+    /// <paramref name="directory"/>.
     /// </summary>
     ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pulls changes from the remote repository into the specified local repository.
+    /// Performs a <c>git pull --ff-only</c> on the specified repository.
     /// </summary>
-    ValueTask Pull(string directory, string? name = null, string? email = null, CancellationToken cancellationToken = default);
+    ValueTask Pull(string directory, string? token = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Commits changes in the given repository using the specified message and author info.
+    /// Adds <c>-A</c>, then commits using the supplied metadata.  
+    /// If the repository has no changes, the call is a no-op.
     /// </summary>
     ValueTask Commit(string directory, string message, string? name = null, string? email = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pushes commits from the given repository to its remote using provided credentials.
+    /// Pushes the default branch of <paramref name="directory"/> to its
+    /// <c>origin</c> remote.
     /// </summary>
     ValueTask Push(string directory, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Stages a file if it is not already present in the index.
+    /// Adds <paramref name="relativeFilePath"/> to the index only if it is not
+    /// already tracked.
     /// </summary>
     ValueTask AddIfNotExists(string directory, string relativeFilePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fetches changes from the remote repository without merging them.
+    /// Runs <c>git fetch</c> on the specified repository.
     /// </summary>
-    ValueTask Fetch(string directory, CancellationToken cancellationToken = default);
+    ValueTask Fetch(string directory, string? token = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Recursively retrieves all directories containing valid Git repositories within the given path.
+    /// Recursively scans <paramref name="directory"/> and returns every path
+    /// that represents a Git repository root.
     /// </summary>
     ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves all dirty repositories (with uncommitted changes) under the specified path.
+    /// Returns the subset of repositories under <paramref name="directory"/>
+    /// that currently have uncommitted changes.
     /// </summary>
     ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Commits and pushes a repository using the given credentials and message.
+    /// Convenience helper that commits (if dirty) and pushes the specified
+    /// repository in one call.
     /// </summary>
-    ValueTask CommitAndPush(string directory, string name, string email, string token, string message, CancellationToken cancellationToken = default);
+    ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
+        CancellationToken cancellationToken = default);
+}
 
-    /// <summary>
-    /// Gets the full path to the git binary for the current runtime.
-    /// </summary>
-    string GetGitBinaryPath();
 }
