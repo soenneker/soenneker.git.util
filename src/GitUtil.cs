@@ -6,18 +6,17 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using LibGit2Sharp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Polly;
 using Polly.Retry;
 using Soenneker.Extensions.Configuration;
-using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Process.Abstract;
+using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Git.Util;
 
@@ -60,202 +59,189 @@ public sealed class GitUtil : IGitUtil
 
     // TODO: Probably should break these 'bulk' operations into a separate class
 
-    public void PullAllGitRepositories(string directory)
+    public string GetGitBinaryPath()
     {
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
-
-        for (var i = 0; i < allRepos.Count; i++)
+        if (RuntimeUtil.IsWindows())
         {
-            string repo = allRepos[i];
-            Pull(repo);
+            return Path.Combine(AppContext.BaseDirectory, "Resources", "win-x64", "cmd", "git.exe");
+        }
+
+        if (RuntimeUtil.IsLinux())
+        {
+            return Path.Combine(AppContext.BaseDirectory, "Resources", "linux-x64", "bin", "git");
+        }
+
+        throw new PlatformNotSupportedException("Unsupported platform for Git binary path retrieval.");
+    }
+
+    public async ValueTask PullAllGitRepositories(string directory, CancellationToken cancellationToken = default)
+    {
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
+
+        foreach (string repo in allRepos)
+        {
+            await Pull(repo, null, null, cancellationToken).NoSync();
         }
     }
 
-    public void FetchAllGitRepositories(string directory)
+    public async ValueTask FetchAllGitRepositories(string directory, CancellationToken cancellationToken = default)
     {
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
 
-        for (var i = 0; i < allRepos.Count; i++)
+        foreach (string repo in allRepos)
         {
-            string repo = allRepos[i];
-            Fetch(repo);
+            await Fetch(repo, cancellationToken).NoSync();
         }
     }
 
-    public void SwitchAllGitRepositoriesToRemoteBranch(string directory)
+    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string directory, CancellationToken cancellationToken = default)
     {
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
 
-        for (var i = 0; i < allRepos.Count; i++)
+        foreach (string repo in allRepos)
         {
-            string repo = allRepos[i];
-            SwitchToRemoteBranch(repo);
+            await SwitchToRemoteBranch(repo, cancellationToken).NoSync();
         }
     }
 
-    public void CommitAllRepositories(string directory, string commitMessage)
+    public async ValueTask CommitAllRepositories(string directory, string commitMessage, CancellationToken cancellationToken = default)
     {
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
 
-        for (var i = 0; i < allRepos.Count; i++)
+        foreach (string repo in allRepos)
         {
-            string repo = allRepos[i];
-            Commit(repo, commitMessage);
+            await Commit(repo, commitMessage, null, null, cancellationToken).NoSync();
         }
     }
 
     public async ValueTask PushAllRepositories(string directory, string token, CancellationToken cancellationToken = default)
     {
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
 
-        for (var i = 0; i < allRepos.Count; i++)
+        foreach (string repo in allRepos)
         {
-            string repo = allRepos[i];
             await Push(repo, token, cancellationToken).NoSync();
         }
     }
 
-    public void SwitchToRemoteBranch(string directory)
+    public async ValueTask SwitchToRemoteBranch(string directory, CancellationToken cancellationToken = default)
     {
         try
         {
-            using var repo = new Repository(directory);
-            Remote? remote = repo.Network.Remotes["origin"];
-
-            _logger.LogInformation("Switching to remote branch from {url} in directory {directory}...", remote.Url, directory);
-
-            const string trackedBranchName = "main";
-            Branch mainBranch = repo.Branches[trackedBranchName];
-            Commands.Checkout(repo, mainBranch, new CheckoutOptions {CheckoutModifiers = CheckoutModifiers.Force});
+            await _processUtil.Start(GetGitBinaryPath(), directory, "fetch origin", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, "checkout main", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, "reset --hard origin/main", true, cancellationToken: cancellationToken).NoSync();
+            _logger.LogInformation("Switched to remote branch 'main' in directory {directory}.", directory);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Could not switch to remove branch for directory {dir}", directory);
+            _logger.LogError(e, "Could not switch to remote branch for directory {dir}", directory);
         }
     }
 
-    public bool IsRepositoryDirty(string directory)
+    public async ValueTask<bool> IsRepositoryDirty(string directory, CancellationToken cancellationToken = default)
     {
-        using var repo = new Repository(directory);
-        RepositoryStatus status = repo.RetrieveStatus();
-        return status.IsDirty;
-    }
-
-    public bool IsRepository(string directory)
-    {
-        return Repository.IsValid(directory);
-    }
-
-    public void Clone(string uri, string directory)
-    {
-        _logger.LogInformation("Cloning uri ({uri}) into directory ({dir}) ...", uri, directory);
-
-        var token = _config.GetValueStrict<string>("Git:Token");
-
-        var fetchOptions = new FetchOptions
-        {
-            CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
-            {
-                Username = "x-access-token",
-                Password = token
-            }
-        };
-
-        var options = new CloneOptions(fetchOptions);
-
         try
         {
-            Repository.Clone(uri, directory, options);
+            List<string> outputLines = await _processUtil.Start(GetGitBinaryPath(), directory, "status --porcelain", true, cancellationToken: cancellationToken).NoSync();
+            return outputLines.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async ValueTask<bool> IsRepository(string directory, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            List<string> outputLines = await _processUtil.Start(GetGitBinaryPath(), directory, "rev-parse --is-inside-work-tree", true, cancellationToken: cancellationToken).NoSync();
+            return outputLines.Count > 0 && outputLines[0].Trim() == "true";
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async ValueTask Clone(string uri, string directory, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("Cloning uri ({uri}) into directory ({dir}) ...", uri, directory);
+        var token = _config.GetValueStrict<string>("Git:Token");
+        string uriWithToken = uri.Replace("https://", $"https://x-access-token:{token}@");
+        try
+        {
+            await _processUtil.Start(GetGitBinaryPath(), null, $"clone {uriWithToken} \"{directory}\"", true, cancellationToken: cancellationToken).NoSync();
         }
         catch (Exception e)
         {
             _logger.LogError(e, "Could not clone uri ({uri}) into directory ({dir})", uri, directory);
         }
-
         _logger.LogDebug("Finished cloning uri ({uri}) into directory ({dir})", uri, directory);
     }
 
     public async ValueTask<string> CloneToTempDirectory(string uri, CancellationToken cancellationToken = default)
     {
-        string dir = await _directoryUtil.CreateTempDirectory(cancellationToken);
-
-        Clone(uri, dir);
-
+        string dir = await _directoryUtil.CreateTempDirectory(cancellationToken).NoSync();
+        await Clone(uri, dir, cancellationToken).NoSync();
         return dir;
     }
 
     public async ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default)
     {
-        _ = await _processUtil.Start("git", directory, command, true, cancellationToken: cancellationToken).NoSync();
+        await _processUtil.Start(GetGitBinaryPath(), directory, command, true, cancellationToken: cancellationToken);
     }
 
-    public void Pull(string directory, string? name = null, string? email = null)
+    public async ValueTask Pull(string directory, string? name = null, string? email = null, CancellationToken cancellationToken = default)
     {
-        string? url = null;
-
         name ??= _config.GetValueStrict<string>("Git:Name");
         email ??= _config.GetValueStrict<string>("Git:Email");
         var token = _config.GetValueStrict<string>("Git:Token");
-
         try
         {
-            using var repo = new Repository(directory);
-            Remote? remote = repo.Network.Remotes["origin"];
-
-            url = remote.Url;
-
-            _logger.LogInformation("Pulling from ({url}) in directory ({directory})...", url, directory);
-
-            MergeResult? mergeResult = Commands.Pull(repo, new Signature(name, email, DateTimeOffset.UtcNow), new PullOptions
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"config user.name \"{name}\"", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"config user.email \"{email}\"", true, cancellationToken: cancellationToken).NoSync();
+            List<string> remoteUrlLines = await _processUtil.Start(GetGitBinaryPath(), directory, "remote get-url origin", true, cancellationToken: cancellationToken).NoSync();
+            string? remoteUrl = remoteUrlLines.Count > 0 ? remoteUrlLines[0].Trim() : null;
+            if (!string.IsNullOrEmpty(remoteUrl) && remoteUrl.StartsWith("https://"))
             {
-                FetchOptions = new FetchOptions
-                {
-                    CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
-                    {
-                        Username = "x-access-token",
-                        Password = token
-                    }
-                },
-                MergeOptions = new MergeOptions
-                {
-                    FailOnConflict = true,
-                    CommitOnSuccess = false
-                }
-            });
-
-            if (mergeResult.Status == MergeStatus.Conflicts)
-                _logger.LogError("Conflicted for repo ({url}) in directory ({directory}), cannot merge!", url, directory);
-            else
+                string urlWithToken = remoteUrl.Replace("https://", $"https://x-access-token:{token}@");
+                await _processUtil.Start(GetGitBinaryPath(), directory, $"remote set-url origin {urlWithToken}", true, cancellationToken: cancellationToken).NoSync();
+            }
+            try
+            {
+                await _processUtil.Start(GetGitBinaryPath(), directory, "pull origin main", true, cancellationToken: cancellationToken).NoSync();
                 _logger.LogDebug("Completed pull");
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogError(ex, "Conflicted for repo in directory ({directory}), cannot merge!", directory);
+            }
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Could not pull ({url}) in directory ({directory})", url, directory);
+            _logger.LogError(e, "Could not pull in directory ({directory})", directory);
         }
     }
 
-    public void Commit(string directory, string message, string? name = null, string? email = null)
+    public async ValueTask Commit(string directory, string message, string? name = null, string? email = null, CancellationToken cancellationToken = default)
     {
         name ??= _config.GetValueStrict<string>("Git:Name");
         email ??= _config.GetValueStrict<string>("Git:Email");
 
         try
         {
-            if (!IsRepositoryDirty(directory))
+            if (!await IsRepositoryDirty(directory, cancellationToken).NoSync())
             {
                 _logger.LogInformation("No changes detected to commit for directory ({directory}), skipping", directory);
                 return;
             }
 
-            using var repo = new Repository(directory);
-
-            _logger.LogInformation("Committing changes in directory ({directory}) ...", directory);
-
-            var signature = new Signature(name, email, DateTimeOffset.UtcNow);
-
-            // Adds files that are not indexed yet
-            Commands.Stage(repo, "*");
-            repo.Commit(message, signature, signature);
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"config user.name \"{name}\"", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"config user.email \"{email}\"", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, "add -A", true, cancellationToken: cancellationToken).NoSync();
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"commit -m \"{message}\"", true, cancellationToken: cancellationToken).NoSync();
         }
         catch (Exception e)
         {
@@ -267,36 +253,20 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            using var repo = new Repository(directory);
-            Remote? remote = repo.Network.Remotes["origin"];
-
-            _logger.LogInformation("Pushing changes to repo ({url}) in directory ({directory}) ...", remote.Url, directory);
-
-            if (!HasChangesToPush(repo))
+            // Set remote url with token
+            List<string> remoteUrlLines =
+                await _processUtil.Start(GetGitBinaryPath(), directory, "remote get-url origin", true, cancellationToken: cancellationToken).NoSync();
+            string? remoteUrl = remoteUrlLines.Count > 0 ? remoteUrlLines[0].Trim() : null;
+            if (!string.IsNullOrEmpty(remoteUrl) && remoteUrl.StartsWith("https://"))
             {
-                return;
+                string urlWithToken = remoteUrl.Replace("https://", $"https://x-access-token:{token}@");
+                await _processUtil.Start(GetGitBinaryPath(), directory, $"remote set-url origin {urlWithToken}", true, cancellationToken: cancellationToken).NoSync();
             }
 
-            var options = new PushOptions
-            {
-                CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
-                {
-                    Username = "x-access-token",
-                    Password = token
-                }
-            };
-
-            Branch localMainBranch = repo.Branches["refs/heads/main"];
-
-            // Capture the repo in a local variable to avoid disposal issues
-            Repository repoToPush = repo;
-
+            // Push
             await _tooManyRequestsRetryPolicy.Value.ExecuteAsync(() =>
-                                             {
-                                                 repoToPush.Network.Push(localMainBranch, options);
-                                                 return Task.CompletedTask;
-                                             })
-                                             .NoSync();
+                Task.Run(async () => { await _processUtil.Start(GetGitBinaryPath(), directory, "push origin main", true, cancellationToken: cancellationToken).NoSync(); },
+                    cancellationToken));
         }
         catch (Exception e)
         {
@@ -304,18 +274,16 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public void AddIfNotExists(string directory, string relativeFilePath)
+    public async ValueTask AddIfNotExists(string directory, string relativeFilePath, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Adding file ({file}) to index if it doesn't exist ...", relativeFilePath);
-
         try
         {
-            using var repo = new Repository(directory);
-
-            if (IsFileInIndex(repo, relativeFilePath))
+            List<string> outputLines = await _processUtil.Start(GetGitBinaryPath(), directory, "diff --name-only --cached", true, cancellationToken: cancellationToken).NoSync();
+            List<string> stagedFiles = outputLines.Select(f => f.Trim()).ToList();
+            if (stagedFiles.Contains(relativeFilePath))
                 return;
-
-            Commands.Stage(repo, relativeFilePath);
+            await _processUtil.Start(GetGitBinaryPath(), directory, $"add \"{relativeFilePath}\"", true, cancellationToken: cancellationToken);
         }
         catch (Exception e)
         {
@@ -324,31 +292,20 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public void Fetch(string directory)
+    public async ValueTask Fetch(string directory, CancellationToken cancellationToken = default)
     {
         var token = _config.GetValueStrict<string>("Git:Token");
-
-        var fetchOptions = new FetchOptions
-        {
-            CredentialsProvider = (_, _, _) => new UsernamePasswordCredentials
-            {
-                Username = "x-access-token",
-                Password = token
-            }
-        };
-
         try
         {
-            using var repo = new Repository(directory);
+            List<string> remoteUrlLines = await _processUtil.Start(GetGitBinaryPath(), directory, "remote get-url origin", true, cancellationToken: cancellationToken).NoSync();
+            string? remoteUrl = remoteUrlLines.Count > 0 ? remoteUrlLines[0].Trim() : null;
+            if (!string.IsNullOrEmpty(remoteUrl) && remoteUrl.StartsWith("https://"))
+            {
+                string urlWithToken = remoteUrl.Replace("https://", $"https://x-access-token:{token}@");
+                await _processUtil.Start(GetGitBinaryPath(), directory, $"remote set-url origin {urlWithToken}", true, cancellationToken: cancellationToken).NoSync();
+            }
 
-            Remote? remote = repo.Network.Remotes["origin"];
-
-            _logger.LogInformation("Fetching from {url} in ({directory}) ...", remote.Url, directory);
-
-            IEnumerable<string> refSpecs = remote.FetchRefSpecs.Select(x => x.Specification);
-
-            Commands.Fetch(repo, remote.Name, refSpecs, fetchOptions, "");
-
+            await _processUtil.Start(GetGitBinaryPath(), directory, "fetch origin", true, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Completed fetch");
         }
         catch (Exception e)
@@ -357,12 +314,10 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public List<string> GetAllGitRepositoriesRecursively(string directory)
+    public async ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Getting all git repositories recursively in directory ({directory})...", directory);
-
         var finalDirectories = new List<string>();
-
         List<string> orderedDirectories = DirectoryUtil.GetDirectoriesOrderedByLevels(directory);
         orderedDirectories.RemoveAll(c => c.Contains(Path.DirectorySeparatorChar + ".git"));
         var index = 0;
@@ -370,95 +325,42 @@ public sealed class GitUtil : IGitUtil
         while (index < orderedDirectories.Count)
         {
             string item = orderedDirectories[index];
-
-            if (IsRepository(item))
+            if (await IsRepository(item, cancellationToken).NoSync())
             {
                 finalDirectories.Add(item);
-
                 orderedDirectories.RemoveAll(dir => dir.StartsWith(item + Path.DirectorySeparatorChar));
             }
-
             index++;
         }
-
         return finalDirectories;
     }
 
-    public List<string> GetAllDirtyRepositories(string directory)
+    public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Getting all 'dirty' repositories in directory ({directory})...", directory);
-
-        List<string> allRepos = GetAllGitRepositoriesRecursively(directory);
-
+        List<string> allRepos = await GetAllGitRepositoriesRecursively(directory, cancellationToken).NoSync();
         var result = new List<string>();
 
-        for (var i = 0; i < allRepos.Count; i++)
+        foreach (string repo in allRepos)
         {
-            string repo = allRepos[i];
-
-            if (IsRepositoryDirty(repo))
+            if (await IsRepositoryDirty(repo, cancellationToken).NoSync())
             {
                 result.Add(repo);
             }
         }
-
         return result;
-    }
-
-    private static bool IsFileInIndex(Repository repo, string relativeFilePath)
-    {
-        foreach (IndexEntry? entry in repo.Index)
-        {
-            if (entry.Path == relativeFilePath)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool HasChangesToPush(Repository repo)
-    {
-        Branch localMainBranch = repo.Branches["refs/heads/main"];
-
-        Commit? localHeadCommit = localMainBranch.Commits.FirstOrDefault();
-
-        if (localHeadCommit == null)
-        {
-            _logger.LogInformation("No changes detected for path ({path}), skipping push", repo.Info.Path);
-            return false;
-        }
-
-        Branch remoteMainBranch = repo.Branches["refs/remotes/origin/main"];
-
-        Commit? remoteHeadCommit = remoteMainBranch.Commits.FirstOrDefault();
-
-        if (remoteHeadCommit == null)
-        {
-            _logger.LogInformation("No changes detected for path ({path}), skipping push", repo.Info.Path);
-            return false;
-        }
-
-        if (localHeadCommit.Id == remoteHeadCommit.Id)
-        {
-            _logger.LogInformation("No changes detected for path ({path}), skipping push", repo.Info.Path);
-            return false;
-        }
-
-        return true;
     }
 
     public async ValueTask CommitAndPush(string directory, string name, string email, string token, string message,
         CancellationToken cancellationToken = default)
     {
-        if (!IsRepositoryDirty(directory))
+        if (!await IsRepositoryDirty(directory, cancellationToken).NoSync())
         {
             _logger.LogInformation("No changes to commit.");
             return;
         }
 
-        Commit(directory, message, name, email);
+        await Commit(directory, message, name, email, cancellationToken).NoSync();
         await Push(directory, token, cancellationToken).NoSync();
     }
 }
