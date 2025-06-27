@@ -334,16 +334,61 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            await _retry429.ExecuteAsync(() =>
-                               Task.Run(
-                                   async () => await Run($"{BuildAuthArg(token)} push origin {_defaultBranch}", directory, cancellationToken: cancellationToken)
-                                       .NoSync(),
-                                   cancellationToken))
-                           .NoSync();
+            // Get the current URL for the 'origin' remote (e.g., https://github.com/user/repo.git)
+            string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
+
+            if (string.IsNullOrEmpty(remoteUrl))
+            {
+                throw new InvalidOperationException($"Could not get remote URL for repository in {directory}.");
+            }
+
+            // Construct the authenticated URL by injecting the token
+            // Turns "https://github.com/user/repo.git" into "https://<token>@github.com/user/repo.git"
+            UriBuilder uriBuilder = new(remoteUrl)
+            {
+                UserName = token
+            };
+
+            var authenticatedUrl = uriBuilder.ToString();
+
+            // The 'git push' command will use the authenticated URL directly.
+            // We push the current branch to the corresponding branch on the remote.
+            // We no longer need BuildAuthArg() for pushing.
+            var pushCommand = $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+
+            await _retry429.ExecuteAsync(async () => { await Run(pushCommand, directory, cancellationToken: cancellationToken).NoSync(); }).NoSync();
+
+            _logger.LogInformation("Successfully pushed to {Dir}", directory);
         }
         catch (Exception ex)
         {
+            // The inner exception from ProcessUtil will have the Git error output.
             _logger.LogError(ex, "Could not push in {Dir}", directory);
+
+            // Optional: re-throw if you want the calling method to know about the failure.
+            // throw; 
+        }
+    }
+
+    private async ValueTask<string> GetRemoteUrl(string directory, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // This command gets the URL for the 'origin' remote
+            List<string> output = await Run("remote get-url origin", directory, log: false, cancellationToken: cancellationToken).NoSync();
+
+            if (output.Count > 0 && !string.IsNullOrWhiteSpace(output[0]))
+            {
+                return output[0].Trim();
+            }
+
+            _logger.LogWarning("Could not determine remote URL for 'origin' in directory {Dir}. Push will likely fail.", directory);
+            return string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get remote URL for {Dir}", directory);
+            return string.Empty;
         }
     }
 
