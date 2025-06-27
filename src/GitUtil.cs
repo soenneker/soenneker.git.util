@@ -63,12 +63,12 @@ public sealed class GitUtil : IGitUtil
     {
         if (RuntimeUtil.IsWindows())
         {
-            return Path.Combine(AppContext.BaseDirectory, "Resources", "win-x64", "cmd", "git.exe");
+            return Path.Combine(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe");
         }
 
         if (RuntimeUtil.IsLinux())
         {
-            return Path.Combine(AppContext.BaseDirectory, "Resources", "linux-x64", "bin", "git");
+            return Path.Combine(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "bin", "git");
         }
 
         throw new PlatformNotSupportedException("Unsupported platform for Git binary path retrieval.");
