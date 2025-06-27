@@ -80,8 +80,8 @@ public sealed class GitUtil : IGitUtil
         };
     }
 
-    private async ValueTask<List<string>> RunGit(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
-        Dictionary<string, string>? env = null, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
+        Dictionary<string, string>? env = null, bool log = true, CancellationToken cancellationToken = default)
     {
         if (_logGitCommands)
         {
@@ -98,7 +98,7 @@ public sealed class GitUtil : IGitUtil
             };
         }
 
-        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, throwOnNonZero, environmentalVars: env,
+        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, throwOnNonZero, environmentalVars: env, log: log,
                                      cancellationToken: cancellationToken)
                                  .NoSync();
     }
@@ -109,15 +109,14 @@ public sealed class GitUtil : IGitUtil
 
         //   Basic header value = base-64 of  ":" + PAT    (empty user name)
         string basic = Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + token));
-        string header = $"Authorization: Basic {basic}";
+        var header = $"Authorization: Basic {basic}";
 
         // Apply to both github.com and codeload.github.com in one shot
-        return $"-c credential.helper= " +
-               $"-c http.https://github.com/.extraheader=\"{header}\" " +
+        return $"-c credential.helper= " + $"-c http.https://github.com/.extraheader=\"{header}\" " +
                $"-c http.https://codeload.github.com/.extraheader=\"{header}\"";
     }
 
-    private static async Task ForEachRepo(IEnumerable<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
+    private static async Task ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
     {
         if (parallel)
         {
@@ -168,9 +167,9 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            await RunGit($"{BuildAuthArg(token)} fetch origin", directory, cancellationToken: cancellationToken).NoSync();
-            await RunGit($"checkout {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
-            await RunGit($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"{BuildAuthArg(token)} fetch origin", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"checkout {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Switched {Dir} to remote branch '{Branch}'", directory, _defaultBranch);
         }
         catch (Exception ex)
@@ -196,7 +195,7 @@ public sealed class GitUtil : IGitUtil
                     return false; // likely clean
             }
 
-            IReadOnlyList<string> status = await RunGit("status --porcelain", directory, cancellationToken: cancellationToken).NoSync();
+            List<string> status = await Run("status --porcelain", directory, cancellationToken: cancellationToken).NoSync();
             return status.Count > 0;
         }
         catch
@@ -209,7 +208,7 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            IReadOnlyList<string> output = await RunGit("rev-parse --is-inside-work-tree", directory, cancellationToken: cancellationToken).NoSync();
+            List<string> output = await Run("rev-parse --is-inside-work-tree", directory, log: false, cancellationToken: cancellationToken).NoSync();
             return output.Count > 0 && output[0].Trim() == "true";
         }
         catch
@@ -224,7 +223,7 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            await RunGit($"clone {BuildAuthArg(token)} \"{uri}\" \"{directory}\"", null, cancellationToken: cancellationToken).NoSync();
+            await Run($"clone {BuildAuthArg(token)} \"{uri}\" \"{directory}\"", null, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Finished cloning {Uri}", uri);
         }
         catch (Exception ex)
@@ -261,14 +260,14 @@ public sealed class GitUtil : IGitUtil
 
     public async ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default)
     {
-        await RunGit(command, directory, cancellationToken: cancellationToken).NoSync();
+        await Run(command, directory, cancellationToken: cancellationToken).NoSync();
     }
 
     public async ValueTask Pull(string directory, string? token = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            await RunGit($"{BuildAuthArg(token)} pull --ff-only origin {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"{BuildAuthArg(token)} pull --ff-only origin {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
             _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
         catch (InvalidOperationException ex)
@@ -302,7 +301,7 @@ public sealed class GitUtil : IGitUtil
                 ["GIT_COMMITTER_EMAIL"] = email
             };
 
-            await RunGit("add -A", directory, cancellationToken: cancellationToken).NoSync();
+            await Run("add -A", directory, cancellationToken: cancellationToken).NoSync();
 
             // Write commit message to a temp file to avoid shell escaping issues
             string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken);
@@ -311,7 +310,7 @@ public sealed class GitUtil : IGitUtil
 
             try
             {
-                await RunGit($"commit -F \"{msgFile}\"", directory, env: env, cancellationToken: cancellationToken).NoSync();
+                await Run($"commit -F \"{msgFile}\"", directory, env: env, cancellationToken: cancellationToken).NoSync();
             }
             finally
             {
@@ -337,9 +336,8 @@ public sealed class GitUtil : IGitUtil
         {
             await _retry429.ExecuteAsync(() =>
                                Task.Run(
-                                   async () => await RunGit($"{BuildAuthArg(token)} push origin {_defaultBranch}", directory,
-                                       cancellationToken: cancellationToken)
-                                   .NoSync(),
+                                   async () => await Run($"{BuildAuthArg(token)} push origin {_defaultBranch}", directory, cancellationToken: cancellationToken)
+                                       .NoSync(),
                                    cancellationToken))
                            .NoSync();
         }
@@ -354,11 +352,11 @@ public sealed class GitUtil : IGitUtil
         try
         {
             // Use ls-files to determine exact staging status
-            bool alreadyTracked = (await RunGit($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, throwOnNonZero: false,
+            bool alreadyTracked = (await Run($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, throwOnNonZero: false,
                     cancellationToken: cancellationToken)
                 .NoSync()).Count > 0;
             if (!alreadyTracked)
-                await RunGit($"add \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync();
+                await Run($"add \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync();
         }
         catch (Exception ex)
         {
@@ -371,7 +369,7 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            await RunGit($"{BuildAuthArg(token)} fetch origin", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"{BuildAuthArg(token)} fetch origin", directory, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Fetched {Dir}", directory);
         }
         catch (Exception ex)

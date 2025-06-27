@@ -126,4 +126,7 @@ public interface IGitUtil
     /// </summary>
     ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default);
+
+    ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
+        Dictionary<string, string>? env = null, bool log = true, CancellationToken cancellationToken = default);
 }
