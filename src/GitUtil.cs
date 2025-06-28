@@ -96,31 +96,8 @@ public sealed class GitUtil : IGitUtil
         return Directory.Exists(gitDir) || File.Exists(gitDir);
     }
 
-    /// <summary>
-    /// Fast deep scan using FileSystemEnumerable. Returns the root path of every Git repository found.
-    /// </summary>
-    private static IEnumerable<string> EnumerateRepoRoots(string root)
-    {
-        var opts = new EnumerationOptions
-        {
-            RecurseSubdirectories = true,
-            AttributesToSkip = 0, // don’t filter hidden/system
-            IgnoreInaccessible = true
-        };
-
-        var enumerable = new FileSystemEnumerable<string>(root, (ref FileSystemEntry entry) => Path.GetDirectoryName(entry.ToFullPath())!, opts)
-        {
-            ShouldIncludePredicate = static (ref FileSystemEntry entry) => entry.IsDirectory && entry.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
-        };
-
-        foreach (string repoRootWithGit in enumerable)
-        {
-            // Trim the trailing "\.git"
-            yield return Path.GetDirectoryName(repoRootWithGit)!;
-        }
-    }
-
-    public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
+        CancellationToken cancellationToken = default)
     {
         if (_logGitCommands)
         {
@@ -130,8 +107,7 @@ public sealed class GitUtil : IGitUtil
         env ??= new Dictionary<string, string>();
         env["GIT_TERMINAL_PROMPT"] = "0"; // Disable terminal prompts for credentials
 
-        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, environmentalVars: env, log: log,
-                                     cancellationToken: cancellationToken)
+        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, environmentalVars: env, log: log, cancellationToken: cancellationToken)
                                  .NoSync();
     }
 
@@ -203,25 +179,43 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            // Fast timestamp heuristic – bail early if nothing changed.
             string gitDir = Path.Join(directory, ".git");
-            string indexFile = Path.Join(gitDir, "index");
+            string index = Path.Join(gitDir, "index");
             string headFile = Path.Join(gitDir, "HEAD");
 
-            if (File.Exists(indexFile) && File.Exists(headFile))
+            // Fast path: timestamps unchanged & no remote divergence
+            if (File.Exists(index) && File.Exists(headFile))
             {
-                DateTime indexTime = File.GetLastWriteTimeUtc(indexFile);
-                DateTime headTime = File.GetLastWriteTimeUtc(headFile);
-                if (indexTime <= headTime)
-                    return false; // likely clean
+                if (File.GetLastWriteTimeUtc(index) <= File.GetLastWriteTimeUtc(headFile) && !await HasRemoteDiverged(directory, cancellationToken).NoSync())
+                    return false;
             }
 
-            List<string> status = await Run("status --porcelain", directory, cancellationToken: cancellationToken).NoSync();
-            return status.Count > 0;
+            // Local working-tree changes?
+            if ((await Run("status --porcelain", directory, cancellationToken: cancellationToken).NoSync()).Count > 0)
+                return true;
+
+            // Finally, remote ahead/behind check
+            return await HasRemoteDiverged(directory, cancellationToken).NoSync();
         }
         catch
         {
-            return false;
+            return false; // play it safe – assume clean on error
+        }
+    }
+
+    private async ValueTask<bool> HasRemoteDiverged(string directory, CancellationToken ct)
+    {
+        try
+        {
+            var lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct).NoSync();
+            if (lines.Count == 0) return false;
+
+            var parts = lines[0].Trim().Split('\t');
+            return parts.Length == 2 && (parts[0] != "0" || parts[1] != "0");
+        }
+        catch
+        {
+            return false; // treat “no upstream” the same as “no divergence”
         }
     }
 
@@ -392,8 +386,8 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            bool alreadyTracked = (await Run($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken)
-                .NoSync()).Count > 0;
+            bool alreadyTracked = (await Run($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync())
+                .Count > 0;
             if (!alreadyTracked)
                 await Run($"add \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync();
         }
@@ -423,6 +417,45 @@ public sealed class GitUtil : IGitUtil
     {
         _logger.LogDebug("Scanning for git repositories under {Root}", directory);
         return EnumerateRepoRoots(directory).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>
+    /// Recursively finds working-tree roots by looking for a valid <c>.git</c>
+    /// control directory *or* control file.  False-positives (e.g. test data)
+    /// are eliminated by a cheap HEAD / gitdir check.
+    /// </summary>
+    private static IEnumerable<string> EnumerateRepoRoots(string root)
+    {
+        var opts = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            AttributesToSkip = FileAttributes.ReparsePoint, // no loops
+            IgnoreInaccessible = true,
+            MatchCasing = MatchCasing.CaseInsensitive
+        };
+
+        var enumerable = new FileSystemEnumerable<string>(root,
+            // Selector: return full path of the .git we just matched
+            (ref FileSystemEntry e) => e.ToFullPath(), opts)
+        {
+            ShouldIncludePredicate = static (ref FileSystemEntry e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
+
+            ShouldRecursePredicate = static (ref FileSystemEntry e)
+                // Never descend into a .git dir itself – eliminates double hits
+                => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
+        };
+
+        foreach (string gitPath in enumerable)
+        {
+            // ── quick sanity ─────────────────────────────────────────────
+            bool looksValid = Directory.Exists(gitPath) ? File.Exists(Path.Join(gitPath, "HEAD")) :
+                File.Exists(gitPath) ? File.ReadLines(gitPath).FirstOrDefault()?.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase) == true : false;
+
+            if (!looksValid)
+                continue;
+
+            yield return Path.GetDirectoryName(gitPath)!; // the repo root
+        }
     }
 
     public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
