@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using AwesomeAssertions;
 using Soenneker.Facts.Local;
 using Soenneker.Tests.FixturedUnit;
@@ -19,9 +18,9 @@ public class GitUtilTests : FixturedUnitTest
     }
 
     [LocalFact]
-    public async ValueTask GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
+    public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
-        List<string> result = await _util.GetAllGitRepositoriesRecursively(@"");
+        List<string> result = _util.GetAllGitRepositoriesRecursively(@"");
         result.Should().NotBeNullOrEmpty();
     }
 

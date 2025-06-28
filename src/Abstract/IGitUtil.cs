@@ -74,11 +74,7 @@ public interface IGitUtil
     /// </summary>
     ValueTask<string> CloneToTempDirectory(string uri, string? token = null, CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Executes an arbitrary Git <paramref name="command"/> in
-    /// <paramref name="directory"/>.
-    /// </summary>
-    ValueTask RunCommand(string command, string directory, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Performs a <c>git pull --ff-only</c> on the specified repository.
@@ -112,7 +108,7 @@ public interface IGitUtil
     /// Recursively scans <paramref name="directory"/> and returns every path
     /// that represents a Git repository root.
     /// </summary>
-    ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default);
+    List<string> GetAllGitRepositoriesRecursively(string directory);
 
     /// <summary>
     /// Returns the subset of repositories under <paramref name="directory"/>
@@ -126,7 +122,4 @@ public interface IGitUtil
     /// </summary>
     ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default);
-
-    ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, bool throwOnNonZero = true,
-        Dictionary<string, string>? env = null, bool log = true, CancellationToken cancellationToken = default);
 }
