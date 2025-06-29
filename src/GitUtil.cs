@@ -60,7 +60,7 @@ public sealed class GitUtil : IGitUtil
 
         _gitBinaryPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
             ? Path.Join(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe")
-            : Path.Join(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "bin", "git");
+            : Path.Join(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "usr", "git.sh");
 
         // NOTE: HttpRequestException.StatusCode is available on .NET 6+. Predicate is guarded accordingly.
         _retry429 = Policy.Handle<HttpRequestException>(static ex =>
