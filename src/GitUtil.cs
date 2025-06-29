@@ -342,11 +342,17 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            var pushCommand = $"push origin HEAD:{_defaultBranch}";
+            string header = BuildAuthHeader(token);          // "Authorization: Basic …"
 
-            var env = new Dictionary<string, string> {["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)};
+            // -c makes the setting apply only to this one command
+            string pushCmd =
+                $"-c http.extraHeader=\"{header}\" " +       // <- credentials
+                $"push origin HEAD:{_defaultBranch}";
 
-            await _retry429.ExecuteAsync(async () => { await Run(pushCommand, directory, env: env, cancellationToken: cancellationToken).NoSync(); }).NoSync();
+            await _retry429.ExecuteAsync(async () => {
+                await Run(pushCmd, directory, log: true,
+                cancellationToken: cancellationToken);
+            }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
         }
