@@ -17,6 +17,7 @@ using System.IO.Enumeration;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -65,7 +66,7 @@ public sealed class GitUtil : IGitUtil
         // NOTE: HttpRequestException.StatusCode is available on .NET 6+. Predicate is guarded accordingly.
         _retry429 = Policy.Handle<HttpRequestException>(static ex =>
                           {
-                              var prop = typeof(HttpRequestException).GetProperty("StatusCode");
+                              PropertyInfo? prop = typeof(HttpRequestException).GetProperty("StatusCode");
                               return prop?.GetValue(ex) is HttpStatusCode code && code == HttpStatusCode.TooManyRequests;
                           })
                           .WaitAndRetryAsync(5, attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)) + TimeSpan.FromMilliseconds(Random.Shared.Next(0, 500)),
@@ -204,10 +205,12 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            var lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct).NoSync();
-            if (lines.Count == 0) return false;
+            List<string> lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct).NoSync();
 
-            var parts = lines[0].Trim().Split('\t');
+            if (lines.Count == 0) 
+                return false;
+
+            string[] parts = lines[0].Trim().Split('\t');
             return parts.Length == 2 && (parts[0] != "0" || parts[1] != "0");
         }
         catch
@@ -237,7 +240,7 @@ public sealed class GitUtil : IGitUtil
         try
         {
             var env = new Dictionary<string, string> {["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)};
-            await Run($"clone --filter=blob:none --depth=1 \"{uri}\" \"{directory}\"", null, env: env, cancellationToken: cancellationToken).NoSync();
+            await Run($"clone --filter=blob:none --depth=1 \"{uri}\" \"{directory}\"", env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Finished cloning {Uri}", uri);
         }
         catch (Exception ex)
@@ -313,7 +316,7 @@ public sealed class GitUtil : IGitUtil
 
             await Run("add -A", directory, cancellationToken: cancellationToken).NoSync();
 
-            string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken);
+            string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken).NoSync();
             await File.WriteAllTextAsync(msgFile, message, cancellationToken).NoSync();
 
             try
@@ -394,6 +397,7 @@ public sealed class GitUtil : IGitUtil
         {
             bool alreadyTracked = (await Run($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync())
                 .Count > 0;
+
             if (!alreadyTracked)
                 await Run($"add \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync();
         }
@@ -493,15 +497,15 @@ public sealed class GitUtil : IGitUtil
 
 
     public async ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default)
     {
-        if (!await IsRepositoryDirty(directory, ct).NoSync())
+        if (!await IsRepositoryDirty(directory, cancellationToken).NoSync())
         {
             _logger.LogInformation("No changes to commit in {Dir}", directory);
             return;
         }
 
-        await Commit(directory, message, name, email, ct).NoSync();
-        await Push(directory, token, ct).NoSync();
+        await Commit(directory, message, name, email, cancellationToken).NoSync();
+        await Push(directory, token, cancellationToken).NoSync();
     }
 }
