@@ -344,16 +344,11 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
-            if (string.IsNullOrEmpty(remoteUrl))
-                throw new InvalidOperationException($"Could not get remote URL for repository in {directory}.");
+            var pushCommand = $"push origin HEAD:{_defaultBranch}";
 
-            UriBuilder ub = new(remoteUrl) {UserName = token};
-            string authenticatedUrl = ub.ToString();
+            var env = new Dictionary<string, string> { ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token) };
 
-            var pushCommand = $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
-
-            await _retry429.ExecuteAsync(async () => { await Run(pushCommand, directory, cancellationToken: cancellationToken).NoSync(); }).NoSync();
+            await _retry429.ExecuteAsync(async () => { await Run(pushCommand, directory, env: env, cancellationToken: cancellationToken).NoSync(); }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
         }
