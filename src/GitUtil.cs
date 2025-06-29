@@ -84,16 +84,14 @@ public sealed class GitUtil : IGitUtil
 
     private string BuildAuthHeader(string? token = null)
     {
-        token ??= _configToken;
-        string basic = Convert.ToBase64String(Encoding.ASCII.GetBytes(":" + token)); // empty user name + PAT
-        return $"Authorization: Basic {basic}";
-    }
+        token ??= _configToken ?? throw new InvalidOperationException("A token is required but none was provided.");
 
-    private static bool LooksLikeRepo(string dir)
-    {
-        // Fast file‑system check – avoids spawning Git just for discovery
-        string gitDir = Path.Join(dir, ".git");
-        return Directory.Exists(gitDir) || File.Exists(gitDir);
+        // GitHub docs recommend "x-access-token", but any non-empty string works
+        const string user = "x-access-token";
+
+        string basic = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{user}:{token}"));
+
+        return $"Authorization: Basic {basic}";
     }
 
     public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
@@ -346,7 +344,7 @@ public sealed class GitUtil : IGitUtil
         {
             var pushCommand = $"push origin HEAD:{_defaultBranch}";
 
-            var env = new Dictionary<string, string> { ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token) };
+            var env = new Dictionary<string, string> {["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)};
 
             await _retry429.ExecuteAsync(async () => { await Run(pushCommand, directory, env: env, cancellationToken: cancellationToken).NoSync(); }).NoSync();
 
