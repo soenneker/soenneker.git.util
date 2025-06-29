@@ -127,7 +127,6 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-
     public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
@@ -280,7 +279,7 @@ public sealed class GitUtil : IGitUtil
         try
         {
             var env = new Dictionary<string, string> {["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)};
-            await Run($"pull --ff-only origin {_defaultBranch}", directory, env: env, cancellationToken: cancellationToken).NoSync();
+            await Run($"pull origin {_defaultBranch}", directory, env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
         catch (InvalidOperationException ex)
