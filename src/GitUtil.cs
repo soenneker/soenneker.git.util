@@ -358,7 +358,7 @@ public sealed class GitUtil : IGitUtil
             await _retry429.ExecuteAsync(async () =>
             {
                 // log:false keeps the token out of logs; flip to true with redaction if you really need it
-                await Run(pushCmd, directory, log: false, cancellationToken: cancellationToken);
+                await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken).NoSync();
             }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
