@@ -342,16 +342,27 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            string header = BuildAuthHeader(token);          // "Authorization: Basic …"
+            // 1. Get the original remote URL to get the host and path
+            string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
+            if (string.IsNullOrEmpty(remoteUrl) || !remoteUrl.StartsWith("https://"))
+            {
+                _logger.LogError("Could not push in {Dir}: Remote 'origin' URL is not a valid HTTPS URL ('{Url}').", directory, remoteUrl);
+                return;
+            }
 
-            // -c makes the setting apply only to this one command
-            string pushCmd =
-                $"-c http.extraHeader=\"{header}\" " +       // <- credentials
-                $"push origin HEAD:{_defaultBranch}";
+            // 2. Construct a new URL with the token embedded
+            var uri = new Uri(remoteUrl);
+            // The token itself serves as the password, with a generic username
+            var authenticatedUrl = $"{uri.Scheme}://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
 
-            await _retry429.ExecuteAsync(async () => {
-                await Run(pushCmd, directory, log: true,
-                cancellationToken: cancellationToken);
+            // 3. Use the new URL in the push command. This avoids all quoting issues.
+            // We push to the full URL instead of the remote name 'origin'.
+            var pushCmd = $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+
+            await _retry429.ExecuteAsync(async () =>
+            {
+                // The environment variable from the old implementation is no longer needed
+                await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken);
             }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
@@ -359,6 +370,8 @@ public sealed class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not push in {Dir}", directory);
+            // Optional: Re-throw if you want the caller to handle the failure
+            // throw;
         }
     }
 
