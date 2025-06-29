@@ -342,28 +342,23 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            // Step 1: Get the original remote URL. This is a dependency for the operation.
+            // 1. Get and sanity-check remote URL
             string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
-            if (string.IsNullOrEmpty(remoteUrl) || !remoteUrl.StartsWith("https://"))
-            {
-                _logger.LogError("Could not push in {Dir}: Remote 'origin' URL is not a valid HTTPS URL ('{Url}'). Push aborted.", directory, remoteUrl);
-                // We must stop here. Pushing would fail anyway.
-                throw new InvalidOperationException($"Cannot push from {directory}. Remote 'origin' URL is missing or not HTTPS.");
-            }
+            if (string.IsNullOrWhiteSpace(remoteUrl) || !remoteUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException($"Cannot push from {directory}. Remote 'origin' URL is missing or not HTTPS (was '{remoteUrl}').");
 
-            // Step 2: Construct a new, temporary URL with the token embedded.
-            var uri = new Uri(remoteUrl);
-            // The username 'x-access-token' is the standard for GitHub PATs/App tokens in URLs.
-            string authenticatedUrl = $"{uri.Scheme}://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
+            // 2. Assemble PAT-bearing URL: https://x-access-token:TOKEN@github.com/ORG/REPO.git
+            string authenticatedUrl = BuildAuthenticatedUrl(remoteUrl, token);
 
-            // Step 3: Build the final, isolated command. This is the critical part.
-            // -c credential.helper="" -> Disables interference from system credential helpers.
-            // "push {url} HEAD:{branch}" -> Pushes the current commit (HEAD) to the specified remote branch.
-            var pushCmd = $"-c credential.helper=\"\" push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+            // 3. Push HEAD -> remote branch in one shot, disabling helpers that might prompt/override
+            string pushCmd =
+                $"-c credential.helper=\"\" " +                      // no OS keychain interference
+                $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
 
             await _retry429.ExecuteAsync(async () =>
             {
-                await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken);
+                // log:false keeps the token out of logs; flip to true with redaction if you really need it
+                await Run(pushCmd, directory, log: false, cancellationToken: cancellationToken);
             }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
@@ -467,6 +462,18 @@ public sealed class GitUtil : IGitUtil
 
             yield return Path.GetDirectoryName(gitPath)!; // the repo root
         }
+    }
+
+    private static string BuildAuthenticatedUrl(string remoteHttps, string token)
+    {
+        var builder = new UriBuilder(remoteHttps)
+        {
+            UserName = "x-access-token",   // GitHub-recommended dummy user
+            Password = token               // the PAT / App token itself
+        };
+
+        // UriBuilder puts the password in the right place and escapes
+        return builder.Uri.AbsoluteUri;
     }
 
     public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
