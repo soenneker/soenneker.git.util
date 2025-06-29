@@ -342,26 +342,27 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            // 1. Get the original remote URL to get the host and path
+            // Step 1: Get the original remote URL. This is a dependency for the operation.
             string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
             if (string.IsNullOrEmpty(remoteUrl) || !remoteUrl.StartsWith("https://"))
             {
-                _logger.LogError("Could not push in {Dir}: Remote 'origin' URL is not a valid HTTPS URL ('{Url}').", directory, remoteUrl);
-                return;
+                _logger.LogError("Could not push in {Dir}: Remote 'origin' URL is not a valid HTTPS URL ('{Url}'). Push aborted.", directory, remoteUrl);
+                // We must stop here. Pushing would fail anyway.
+                throw new InvalidOperationException($"Cannot push from {directory}. Remote 'origin' URL is missing or not HTTPS.");
             }
 
-            // 2. Construct a new URL with the token embedded
+            // Step 2: Construct a new, temporary URL with the token embedded.
             var uri = new Uri(remoteUrl);
-            // The token itself serves as the password, with a generic username
-            var authenticatedUrl = $"{uri.Scheme}://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
+            // The username 'x-access-token' is the standard for GitHub PATs/App tokens in URLs.
+            string authenticatedUrl = $"{uri.Scheme}://x-access-token:{token}@{uri.Host}{uri.PathAndQuery}";
 
-            // 3. Use the new URL in the push command. This avoids all quoting issues.
-            // We push to the full URL instead of the remote name 'origin'.
-            var pushCmd = $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+            // Step 3: Build the final, isolated command. This is the critical part.
+            // -c credential.helper="" -> Disables interference from system credential helpers.
+            // "push {url} HEAD:{branch}" -> Pushes the current commit (HEAD) to the specified remote branch.
+            var pushCmd = $"-c credential.helper=\"\" push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
 
             await _retry429.ExecuteAsync(async () =>
             {
-                // The environment variable from the old implementation is no longer needed
                 await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken);
             }).NoSync();
 
@@ -370,8 +371,7 @@ public sealed class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not push in {Dir}", directory);
-            // Optional: Re-throw if you want the caller to handle the failure
-            // throw;
+            throw;
         }
     }
 
