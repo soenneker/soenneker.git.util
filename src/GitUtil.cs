@@ -207,7 +207,7 @@ public sealed class GitUtil : IGitUtil
         {
             List<string> lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct).NoSync();
 
-            if (lines.Count == 0) 
+            if (lines.Count == 0)
                 return false;
 
             string[] parts = lines[0].Trim().Split('\t');
@@ -233,14 +233,21 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask Clone(string uri, string directory, string? token = null, CancellationToken cancellationToken = default)
+    public async ValueTask Clone(string uri, string directory, string? token = null, bool shallow = false, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Cloning {Uri} into {Dir} ...", uri, directory);
 
         try
         {
-            var env = new Dictionary<string, string> {["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)};
-            await Run($"clone --filter=blob:none --depth=1 \"{uri}\" \"{directory}\"", env: env, cancellationToken: cancellationToken).NoSync();
+            var env = new Dictionary<string, string>
+            {
+                ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)
+            };
+
+            string depthArg = shallow ? "--filter=blob:none --depth=1" : string.Empty;
+            var args = $"clone {depthArg} \"{uri}\" \"{directory}\"";
+
+            await Run(args, env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Finished cloning {Uri}", uri);
         }
         catch (Exception ex)
@@ -256,7 +263,7 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            await Clone(uri, dir, token, cancellationToken).NoSync();
+            await Clone(uri, dir, token, true, cancellationToken).NoSync();
             return dir;
         }
         catch
@@ -354,15 +361,15 @@ public sealed class GitUtil : IGitUtil
             string authenticatedUrl = BuildAuthenticatedUrl(remoteUrl, token);
 
             // 3. Push HEAD -> remote branch in one shot, disabling helpers that might prompt/override
-            string pushCmd =
-                $"-c credential.helper=\"\" " +                      // no OS keychain interference
-                $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+            string pushCmd = $"-c credential.helper=\"\" " + // no OS keychain interference
+                             $"push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
 
             await _retry429.ExecuteAsync(async () =>
-            {
-                // log:false keeps the token out of logs; flip to true with redaction if you really need it
-                await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken).NoSync();
-            }).NoSync();
+                           {
+                               // log:false keeps the token out of logs; flip to true with redaction if you really need it
+                               await Run(pushCmd, directory, log: true, cancellationToken: cancellationToken).NoSync();
+                           })
+                           .NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
         }
@@ -391,21 +398,25 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask AddIfNotExists(string directory, string relativeFilePath, CancellationToken cancellationToken = default)
+    public async ValueTask AddIfNotExists(string directory, string relativeOrAbsolutePath, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            bool alreadyTracked = (await Run($"ls-files --error-unmatch \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync())
-                .Count > 0;
+        string full = Path.IsPathRooted(relativeOrAbsolutePath) ? relativeOrAbsolutePath : Path.GetFullPath(Path.Combine(directory, relativeOrAbsolutePath));
 
-            if (!alreadyTracked)
-                await Run($"add \"{relativeFilePath}\"", directory, cancellationToken: cancellationToken).NoSync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Could not add {File} in {Dir}", relativeFilePath, directory);
-            throw;
-        }
+        if (!full.StartsWith(Path.GetFullPath(directory) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("File is outside the repository root.");
+
+        string rel = Path.GetRelativePath(directory, full).Replace('\\', '/'); // normalize for git pathspec
+
+        // Non-erroring check: returns 0 lines if not tracked
+        var listed = await Run($"ls-files --cached -- \"{rel}\"", directory, log: false, cancellationToken: cancellationToken).NoSync();
+        if (listed.Count > 0)
+            return;
+
+        if (!File.Exists(full))
+            throw new FileNotFoundException("File not found in working tree", full);
+
+        string forceFlag = false ? " -f" : string.Empty;
+        await Run($"add{forceFlag} -- \"{rel}\"", directory, cancellationToken: cancellationToken).NoSync();
     }
 
     public async ValueTask Fetch(string directory, string? token = null, CancellationToken cancellationToken = default)
@@ -472,8 +483,8 @@ public sealed class GitUtil : IGitUtil
     {
         var builder = new UriBuilder(remoteHttps)
         {
-            UserName = "x-access-token",   // GitHub-recommended dummy user
-            Password = token               // the PAT / App token itself
+            UserName = "x-access-token", // GitHub-recommended dummy user
+            Password = token // the PAT / App token itself
         };
 
         // UriBuilder puts the password in the right place and escapes
