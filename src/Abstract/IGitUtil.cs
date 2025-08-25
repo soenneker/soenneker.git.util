@@ -66,7 +66,7 @@ public interface IGitUtil
     /// <summary>
     /// Clones <paramref name="uri"/> into <paramref name="directory"/>.
     /// </summary>
-    ValueTask Clone(string uri, string directory, string? token = null, CancellationToken cancellationToken = default);
+    ValueTask Clone(string uri, string directory, string? token = null, bool shallow = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Clones <paramref name="uri"/> into a newly created temporary directory
