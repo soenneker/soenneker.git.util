@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using AwesomeAssertions;
 using Soenneker.Facts.Local;
 using Soenneker.Tests.FixturedUnit;
@@ -22,6 +23,12 @@ public class GitUtilTests : FixturedUnitTest
     {
         List<string> result = _util.GetAllGitRepositoriesRecursively(@"");
         result.Should().NotBeNullOrEmpty();
+    }
+
+    [LocalFact]
+    public async ValueTask CloneToTempDirectory()
+    {
+        await _util.CloneToTempDirectory("https://github.com/git/git");
     }
 
     [LocalFact]

@@ -233,28 +233,51 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask Clone(string uri, string directory, string? token = null, bool shallow = false, CancellationToken cancellationToken = default)
+    public async ValueTask Clone(string uri, string directory, string? token = null, bool shallow = false, CancellationToken ct = default)
     {
         _logger.LogInformation("Cloning {Uri} into {Dir} ...", uri, directory);
 
+        // ensure empty dir
+        if (Directory.Exists(directory))
+        {
+            if (Directory.EnumerateFileSystemEntries(directory).Any())
+                throw new InvalidOperationException($"Destination '{directory}' exists and is not empty.");
+        }
+        else
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        var env = new Dictionary<string, string>
+        {
+            ["GIT_TERMINAL_PROMPT"] = "0",
+            ["GIT_ASKPASS"] = "/bin/true",
+            ["SSH_ASKPASS"] = "/bin/true",
+            // while diagnosing, you can uncomment:
+            // ["GIT_TRACE"] = "1",
+            // ["GIT_CURL_VERBOSE"] = "1",
+        };
+
+        string headerArgs = string.IsNullOrWhiteSpace(token) ? "" : $"-c {BuildExtraHeaderArgs(uri, token!)}";
+        string shallowArgs = shallow ? "--filter=blob:none --depth=1" : "";
+
         try
         {
-            var env = new Dictionary<string, string>
-            {
-                ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeader(token)
-            };
-
-            string depthArg = shallow ? "--filter=blob:none --depth=1" : string.Empty;
-            var args = $"clone {depthArg} \"{uri}\" \"{directory}\"";
-
-            await Run(args, env: env, cancellationToken: cancellationToken).NoSync();
-            _logger.LogInformation("Finished cloning {Uri}", uri);
+            // Use header(s), not credentials-in-URL
+            await Run($"{headerArgs} clone --progress {shallowArgs} \"{uri}\" \"{directory}\"", env: env, cancellationToken: ct).NoSync();
         }
-        catch (Exception ex)
+        catch
         {
-            _logger.LogError(ex, "Could not clone {Uri} into {Dir}", uri, directory);
-            throw;
+            // If the server/Git dislikes partial clone, retry with just depth
+            if (shallow)
+            {
+                _logger.LogWarning("Retrying clone without blob filter...");
+                await Run($"{headerArgs} clone --progress --depth=1 \"{uri}\" \"{directory}\"", env: env, cancellationToken: ct).NoSync();
+            }
+            else throw;
         }
+
+        _logger.LogInformation("Finished cloning {Uri}", uri);
     }
 
     public async ValueTask<string> CloneToTempDirectory(string uri, string? token = null, CancellationToken cancellationToken = default)
@@ -477,6 +500,17 @@ public sealed class GitUtil : IGitUtil
 
             yield return Path.GetDirectoryName(gitPath)!; // the repo root
         }
+    }
+
+    private static string BuildExtraHeaderArgs(string uri, string token)
+    {
+        // Build "Authorization: Basic base64(x-access-token:TOKEN)"
+        var basic = Convert.ToBase64String(System.Text.Encoding.ASCII.GetBytes($"x-access-token:{token.Trim()}"));
+
+        // Scope headers to both the repo host and the objects CDN host used by partial clones
+        // Adjust github.com if you're cloning from GH Enterprise
+        return string.Join(" ", "http.https://github.com/.extraHeader=\"Authorization: Basic " + basic + "\"",
+            "http.https://objects.githubusercontent.com/.extraHeader=\"Authorization: Basic " + basic + "\"");
     }
 
     private static string BuildAuthenticatedUrl(string remoteHttps, string token)
