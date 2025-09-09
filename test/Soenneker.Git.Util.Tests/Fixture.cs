@@ -22,7 +22,7 @@ public class Fixture : UnitFixture
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
-            builder.AddSerilog(dispose: true);
+            builder.AddSerilog(dispose: false);
         });
 
         IConfiguration config = TestUtil.BuildConfig();
