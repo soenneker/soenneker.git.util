@@ -40,7 +40,7 @@
     
     <ItemGroup>
       <PackageReference Include="Polly" Version="8.6.4" />
-      <PackageReference Include="Soenneker.Extensions.Configuration" Version="3.0.724" />
+      <PackageReference Include="Soenneker.Extensions.Configuration" Version="3.0.725" />
       <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="3.0.398" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="3.0.428" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="3.0.731" />
