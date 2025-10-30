@@ -157,6 +157,16 @@ public sealed class GitUtil : IGitUtil
         await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Push(repo, token, cancellationToken)).NoSync();
     }
 
+    public async ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
+    {
+        List<string> repos = GetAllGitRepositoriesRecursively(root);
+        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
+        {
+            await Pull(repo, token, ct).NoSync();
+            await Push(repo, token, ct).NoSync();
+        }).NoSync();
+    }
+
     public async ValueTask SwitchToRemoteBranch(string directory, string? token = null, CancellationToken cancellationToken = default)
     {
         try

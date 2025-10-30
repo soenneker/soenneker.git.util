@@ -122,4 +122,9 @@ public interface IGitUtil
     /// </summary>
     ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For every repository discovered under <paramref name="root"/>, performs a pull and then immediately pushes.
+    /// </summary>
+    ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 }
