@@ -41,7 +41,7 @@
     <ItemGroup>
       <PackageReference Include="Polly" Version="8.6.4" />
       <PackageReference Include="Soenneker.Extensions.Configuration" Version="4.0.735" />
-      <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="3.0.424" PrivateAssets="analyzers;build" />
+      <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="4.0.509" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="3.0.533" PrivateAssets="analyzers;build" />
       <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.740" />
       <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1355" />
