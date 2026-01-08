@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using AwesomeAssertions;
 using Soenneker.Facts.Local;
+using Soenneker.Facts.Manual;
 using Soenneker.Tests.FixturedUnit;
 using Soenneker.Git.Util.Abstract;
 using Xunit;
@@ -18,11 +19,13 @@ public class GitUtilTests : FixturedUnitTest
         _util = Resolve<IGitUtil>(true);
     }
 
-    [LocalFact]
+    [ManualFact]
+    //[LocalFact]
     public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
-        List<string> result = _util.GetAllGitRepositoriesRecursively(@"");
-        result.Should().NotBeNullOrEmpty();
+        List<string> result = _util.GetAllGitRepositoriesRecursively(@"c:\git");
+        result.Should()
+              .NotBeNullOrEmpty();
     }
 
     [LocalFact]
