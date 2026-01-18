@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using Soenneker.Extensions.Configuration;
+﻿using Soenneker.Extensions.Configuration;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Microsoft.Extensions.Configuration;
@@ -49,10 +48,21 @@ public sealed class GitUtil : IGitUtil
     // Cache Authorization header per token to avoid base64 work every call
     private readonly ConcurrentDictionary<string, string> _authHeaderCache = new(StringComparer.Ordinal);
 
+    // Cache full env dictionaries per token to avoid per-command dictionary allocations
+    // NOTE: safe only if _processUtil.Start does NOT mutate the dictionary.
+    private readonly ConcurrentDictionary<string, Dictionary<string, string>> _authEnvCache = new(StringComparer.Ordinal);
+
+    private readonly int _maxParallelism;
+
     private const string _gitTerminalPromptKey = "GIT_TERMINAL_PROMPT";
     private const string _gitTerminalPromptValue = "0";
 
-    public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil, IPathUtil pathUtil)
+    public GitUtil(
+        IConfiguration config,
+        ILogger<GitUtil> logger,
+        IDirectoryUtil directoryUtil,
+        IProcessUtil processUtil,
+        IPathUtil pathUtil)
     {
         _logger = logger;
         _directoryUtil = directoryUtil;
@@ -70,21 +80,26 @@ public sealed class GitUtil : IGitUtil
             ? Path.Join(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe")
             : Path.Join(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "git.sh");
 
-        // .NET 10: HttpRequestException.StatusCode exists, no reflection required.
+        _maxParallelism = Math.Min(Environment.ProcessorCount, 8);
+
+        // .NET 10: HttpRequestException.StatusCode exists
         _retry429 = Policy.Handle<HttpRequestException>(static ex => ex.StatusCode == HttpStatusCode.TooManyRequests)
-                          .WaitAndRetryAsync(retryCount: 5, sleepDurationProvider: static attempt =>
+                          .WaitAndRetryAsync(
+                              retryCount: 5,
+                              sleepDurationProvider: static attempt =>
                                   // cheaper than Math.Pow(2, attempt)
                                   TimeSpan.FromSeconds(1 << attempt) + TimeSpan.FromMilliseconds(RandomUtil.Next(0, 500)),
-                              onRetry: (ex, ts, attempt, _) => logger.LogWarning("429 detected – retry #{Attempt} in {Delay:n1}s", attempt, ts.TotalSeconds));
+                              onRetry: (ex, ts, attempt, _) =>
+                                  _logger.LogWarning("429 detected – retry #{Attempt} in {Delay:n1}s", attempt, ts.TotalSeconds));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ParallelOptions CreateParallelOptions(CancellationToken cancellationToken)
+    private ParallelOptions CreateParallelOptions(CancellationToken cancellationToken)
     {
         return new ParallelOptions
         {
             // Cap to 8 threads – enough for network-bound Git without overwhelming disks
-            MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8),
+            MaxDegreeOfParallelism = _maxParallelism,
             CancellationToken = cancellationToken
         };
     }
@@ -110,18 +125,22 @@ public sealed class GitUtil : IGitUtil
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Dictionary<string, string> CreateAuthEnv(string? token)
+    private Dictionary<string, string> GetAuthEnvCached(string? token)
     {
-        // Pre-size to avoid resize; Run() will TryAdd prompt too, but we include it here to keep
-        // environments self-contained and avoid mutating a shared dictionary elsewhere.
-        return new Dictionary<string, string>(capacity: 2)
+        token ??= _configToken ?? throw new InvalidOperationException("A token is required but none was provided.");
+
+        return _authEnvCache.GetOrAdd(token, t => new Dictionary<string, string>(capacity: 2)
         {
-            ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeaderCached(token),
+            ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeaderCached(t),
             [_gitTerminalPromptKey] = _gitTerminalPromptValue
-        };
+        });
     }
 
-    public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
+    public async ValueTask<List<string>> Run(
+        string arguments,
+        string? workingDirectory = null,
+        Dictionary<string, string>? env = null,
+        bool log = true,
         CancellationToken cancellationToken = default)
     {
         if (_logGitCommands && log)
@@ -145,23 +164,29 @@ public sealed class GitUtil : IGitUtil
                                  .NoSync();
     }
 
-    private static async Task ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
+    private static async Task ForEachRepo(
+        List<string> repos,
+        bool parallel,
+        CancellationToken ct,
+        Func<string, CancellationToken, ValueTask> action)
     {
         if (parallel)
         {
-            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), async (repo, token) =>
+            await Parallel.ForEachAsync(repos, new ParallelOptions
             {
-                await action(repo, token)
-                    .NoSync();
-            });
+                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8),
+                CancellationToken = ct
+            }, async (repo, token) =>
+            {
+                await action(repo, token).NoSync();
+            }).NoSync();
         }
         else
         {
             foreach (string repo in repos)
             {
                 ct.ThrowIfCancellationRequested();
-                await action(repo, ct)
-                    .NoSync();
+                await action(repo, ct).NoSync();
             }
         }
     }
@@ -169,64 +194,52 @@ public sealed class GitUtil : IGitUtil
     public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Pull(repo, token, ct))
-            .NoSync();
+        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Pull(repo, token, ct)).NoSync();
     }
 
     public async ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct))
-            .NoSync();
+        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct)).NoSync();
     }
 
-    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false,
-        CancellationToken cancellationToken = default)
+    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => SwitchToRemoteBranch(repo, token, ct))
-            .NoSync();
+        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => SwitchToRemoteBranch(repo, token, ct)).NoSync();
     }
 
     public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken ct = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
-        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken))
-            .NoSync();
+        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken)).NoSync();
     }
 
     public async ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken ct = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
-        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Push(repo, token, cancellationToken))
-            .NoSync();
+        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Push(repo, token, cancellationToken)).NoSync();
     }
 
     public async ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(root);
         await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
-            {
-                await Pull(repo, token, ct)
-                    .NoSync();
-                await Push(repo, token, ct)
-                    .NoSync();
-            })
-            .NoSync();
+        {
+            await Pull(repo, token, ct).NoSync();
+            await Push(repo, token, ct).NoSync();
+        }).NoSync();
     }
 
     public async ValueTask SwitchToRemoteBranch(string directory, string? token = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            Dictionary<string, string> env = CreateAuthEnv(token);
+            Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            await Run("fetch origin", directory, env: env, cancellationToken: cancellationToken)
-                .NoSync();
-            await Run($"checkout {_defaultBranch}", directory, cancellationToken: cancellationToken)
-                .NoSync();
-            await Run($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
-                .NoSync();
+            await Run("fetch origin", directory, env: env, cancellationToken: cancellationToken).NoSync();
+            await Run($"checkout {_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
+            await Run($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken).NoSync();
 
             _logger.LogInformation("Switched {Dir} to remote branch '{Branch}'", directory, _defaultBranch);
         }
@@ -241,17 +254,15 @@ public sealed class GitUtil : IGitUtil
         try
         {
             // Local working-tree changes?
-            if ((await Run("status --porcelain", directory, log: false, cancellationToken: cancellationToken)
-                    .NoSync()).Count > 0)
+            if ((await Run("status --porcelain", directory, log: false, cancellationToken: cancellationToken).NoSync()).Count > 0)
                 return true;
 
             // Remote ahead/behind check (treat “no upstream” as “no divergence”)
-            return await HasRemoteDiverged(directory, cancellationToken)
-                .NoSync();
+            return await HasRemoteDiverged(directory, cancellationToken).NoSync();
         }
         catch
         {
-            // Play it safe – assume clean on error (matches your existing behavior).
+            // Play it safe – assume clean on error
             return false;
         }
     }
@@ -260,14 +271,11 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            List<string> lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct)
-                .NoSync();
+            List<string> lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct).NoSync();
             if (lines.Count == 0)
                 return false;
 
-            ReadOnlySpan<char> s = lines[0]
-                                   .AsSpan()
-                                   .Trim();
+            ReadOnlySpan<char> s = lines[0].AsSpan().Trim();
 
             // common clean case: "0\t0"
             if (s.SequenceEqual("0\t0".AsSpan()))
@@ -277,10 +285,8 @@ public sealed class GitUtil : IGitUtil
             if (tab <= 0 || tab >= s.Length - 1)
                 return false;
 
-            ReadOnlySpan<char> left = s[..tab]
-                .Trim();
-            ReadOnlySpan<char> right = s[(tab + 1)..]
-                .Trim();
+            ReadOnlySpan<char> left = s[..tab].Trim();
+            ReadOnlySpan<char> right = s[(tab + 1)..].Trim();
 
             return !(left.SequenceEqual("0".AsSpan()) && right.SequenceEqual("0".AsSpan()));
         }
@@ -294,11 +300,8 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            List<string> output = await Run("rev-parse --is-inside-work-tree", directory, log: false, cancellationToken: cancellationToken)
-                .NoSync();
-            return output.Count > 0 && output[0]
-                                       .Trim()
-                                       .Equals("true", StringComparison.Ordinal);
+            List<string> output = await Run("rev-parse --is-inside-work-tree", directory, log: false, cancellationToken: cancellationToken).NoSync();
+            return output.Count > 0 && output[0].Trim().Equals("true", StringComparison.Ordinal);
         }
         catch
         {
@@ -312,13 +315,12 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            Dictionary<string, string> env = CreateAuthEnv(token);
+            Dictionary<string, string> env = GetAuthEnvCached(token);
 
             string depthArg = shallow ? "--filter=blob:none --depth=1" : string.Empty;
-            var args = $"clone {depthArg} \"{uri}\" \"{directory}\"";
+            string args = $"clone {depthArg} \"{uri}\" \"{directory}\"";
 
-            await Run(args, env: env, cancellationToken: cancellationToken)
-                .NoSync();
+            await Run(args, env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Finished cloning {Uri}", uri);
         }
         catch (Exception ex)
@@ -330,13 +332,11 @@ public sealed class GitUtil : IGitUtil
 
     public async ValueTask<string> CloneToTempDirectory(string uri, string? token = null, CancellationToken cancellationToken = default)
     {
-        string dir = await _directoryUtil.CreateTempDirectory(cancellationToken)
-                                         .NoSync();
+        string dir = await _directoryUtil.CreateTempDirectory(cancellationToken).NoSync();
 
         try
         {
-            await Clone(uri, dir, token, true, cancellationToken)
-                .NoSync();
+            await Clone(uri, dir, token, true, cancellationToken).NoSync();
             return dir;
         }
         catch
@@ -358,10 +358,9 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            Dictionary<string, string> env = CreateAuthEnv(token);
+            Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            await Run($"pull origin {_defaultBranch}", directory, env: env, cancellationToken: cancellationToken)
-                .NoSync();
+            await Run($"pull origin {_defaultBranch}", directory, env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
         catch (InvalidOperationException ex)
@@ -381,8 +380,7 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            if (!await IsRepositoryDirty(directory, cancellationToken)
-                    .NoSync())
+            if (!await IsRepositoryDirty(directory, cancellationToken).NoSync())
             {
                 _logger.LogInformation("No changes detected in {Dir}", directory);
                 return;
@@ -396,18 +394,14 @@ public sealed class GitUtil : IGitUtil
                 ["GIT_COMMITTER_EMAIL"] = email
             };
 
-            await Run("add -A", directory, cancellationToken: cancellationToken)
-                .NoSync();
+            await Run("add -A", directory, cancellationToken: cancellationToken).NoSync();
 
-            string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken)
-                                            .NoSync();
-            await File.WriteAllTextAsync(msgFile, message, cancellationToken)
-                      .NoSync();
+            string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken).NoSync();
+            await File.WriteAllTextAsync(msgFile, message, cancellationToken).NoSync();
 
             try
             {
-                await Run($"commit -F \"{msgFile}\"", directory, env: env, cancellationToken: cancellationToken)
-                    .NoSync();
+                await Run($"commit -F \"{msgFile}\"", directory, env: env, cancellationToken: cancellationToken).NoSync();
             }
             finally
             {
@@ -432,8 +426,7 @@ public sealed class GitUtil : IGitUtil
         try
         {
             // 1. Get and sanity-check remote URL
-            string remoteUrl = await GetRemoteUrl(directory, cancellationToken)
-                .NoSync();
+            string remoteUrl = await GetRemoteUrl(directory, cancellationToken).NoSync();
             if (string.IsNullOrWhiteSpace(remoteUrl) || !remoteUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException($"Cannot push from {directory}. Remote 'origin' URL is missing or not HTTPS (was '{remoteUrl}').");
 
@@ -441,15 +434,13 @@ public sealed class GitUtil : IGitUtil
             string authenticatedUrl = BuildAuthenticatedUrl(remoteUrl, token);
 
             // 3. Push HEAD -> remote branch in one shot, disabling helpers that might prompt/override
-            var pushCmd = $"-c credential.helper=\"\" push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+            string pushCmd = $"-c credential.helper=\"\" push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
 
             await _retry429.ExecuteAsync(async () =>
-                           {
-                               // IMPORTANT: do not log this command; it contains the token in the URL.
-                               await Run(pushCmd, directory, log: false, cancellationToken: cancellationToken)
-                                   .NoSync();
-                           })
-                           .NoSync();
+            {
+                // IMPORTANT: do not log this command; it contains the token in the URL.
+                await Run(pushCmd, directory, log: false, cancellationToken: cancellationToken).NoSync();
+            }).NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
         }
@@ -464,11 +455,9 @@ public sealed class GitUtil : IGitUtil
     {
         try
         {
-            List<string> output = await Run("remote get-url origin", directory, log: false, cancellationToken: cancellationToken)
-                .NoSync();
+            List<string> output = await Run("remote get-url origin", directory, log: false, cancellationToken: cancellationToken).NoSync();
             if (output.Count > 0 && !string.IsNullOrWhiteSpace(output[0]))
-                return output[0]
-                    .Trim();
+                return output[0].Trim();
 
             _logger.LogWarning("Could not determine remote URL for 'origin' in directory {Dir}. Push will likely fail.", directory);
             return string.Empty;
@@ -482,38 +471,42 @@ public sealed class GitUtil : IGitUtil
 
     public async ValueTask AddIfNotExists(string directory, string relativeOrAbsolutePath, CancellationToken cancellationToken = default)
     {
-        string full = Path.IsPathRooted(relativeOrAbsolutePath) ? relativeOrAbsolutePath : Path.GetFullPath(Path.Combine(directory, relativeOrAbsolutePath));
+        string full = Path.IsPathRooted(relativeOrAbsolutePath)
+            ? relativeOrAbsolutePath
+            : Path.GetFullPath(Path.Combine(directory, relativeOrAbsolutePath));
 
-        // Avoid allocating Path.GetFullPath(directory) twice
-        string rootFull = Path.GetFullPath(directory);
-        if (!full.StartsWith(rootFull + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        // Cheap escape check: if the relative path escapes root (".."), reject
+        string rel = Path.GetRelativePath(directory, full);
+
+        if (Path.IsPathRooted(rel) ||
+            (rel.Length >= 2 &&
+             rel[0] == '.' &&
+             rel[1] == '.' &&
+             (rel.Length == 2 || rel[2] == Path.DirectorySeparatorChar || rel[2] == Path.AltDirectorySeparatorChar)))
+        {
             throw new InvalidOperationException("File is outside the repository root.");
+        }
 
-        string rel = Path.GetRelativePath(directory, full)
-                         .Replace('\\', '/'); // normalize for git pathspec
+        rel = rel.Replace('\\', '/'); // normalize for git pathspec
 
         // Non-erroring check: returns 0 lines if not tracked
-        List<string> listed = await Run($"ls-files --cached -- \"{rel}\"", directory, log: false, cancellationToken: cancellationToken)
-            .NoSync();
+        List<string> listed = await Run($"ls-files --cached -- \"{rel}\"", directory, log: false, cancellationToken: cancellationToken).NoSync();
         if (listed.Count > 0)
             return;
 
         if (!File.Exists(full))
             throw new FileNotFoundException("File not found in working tree", full);
 
-        const string forceFlag = ""; // kept for future toggling without branching allocations
-        await Run($"add{forceFlag} -- \"{rel}\"", directory, cancellationToken: cancellationToken)
-            .NoSync();
+        await Run($"add -- \"{rel}\"", directory, cancellationToken: cancellationToken).NoSync();
     }
 
     public async ValueTask Fetch(string directory, string? token = null, CancellationToken cancellationToken = default)
     {
         try
         {
-            Dictionary<string, string> env = CreateAuthEnv(token);
+            Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            await Run("fetch origin --filter=blob:none --prune", directory, env: env, cancellationToken: cancellationToken)
-                .NoSync();
+            await Run("fetch origin --filter=blob:none --prune", directory, env: env, cancellationToken: cancellationToken).NoSync();
             _logger.LogInformation("Fetched {Dir}", directory);
         }
         catch (Exception ex)
@@ -531,7 +524,14 @@ public sealed class GitUtil : IGitUtil
         foreach (string repoRoot in EnumerateRepoRoots(directory))
             set.Add(repoRoot);
 
-        return set.Count == 0 ? [] : [..set];
+        if (set.Count == 0)
+            return [];
+
+        var result = new List<string>(set.Count);
+        foreach (string s in set)
+            result.Add(s);
+
+        return result;
     }
 
     /// <summary>
@@ -548,12 +548,12 @@ public sealed class GitUtil : IGitUtil
             MatchCasing = MatchCasing.CaseInsensitive
         };
 
-        var enumerable = new FileSystemEnumerable<string>(root, static (ref e) => e.ToFullPath(), opts)
+        var enumerable = new FileSystemEnumerable<string>(root, static (ref FileSystemEntry e) => e.ToFullPath(), opts)
         {
-            ShouldIncludePredicate = static (ref e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
+            ShouldIncludePredicate = static (ref FileSystemEntry e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
 
             // Never descend into a .git dir itself – eliminates double hits
-            ShouldRecursePredicate = static (ref e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
+            ShouldRecursePredicate = static (ref FileSystemEntry e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
         };
 
         foreach (string gitPath in enumerable)
@@ -577,12 +577,21 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            // Read only the first line; cheaper than File.ReadLines(...).FirstOrDefault()
-            using var fs = new FileStream(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 256, FileOptions.SequentialScan);
-            using var sr = new StreamReader(fs, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, bufferSize: 256, leaveOpen: false);
+            using var fs = new FileStream(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 64, FileOptions.SequentialScan);
 
-            string? line = sr.ReadLine();
-            return line is not null && line.StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase);
+            Span<byte> buf = stackalloc byte[7]; // "gitdir:"
+            int read = fs.Read(buf);
+            if (read < 7)
+                return false;
+
+            // ASCII compare, case-insensitive for letters
+            return (buf[0] | 0x20) == (byte)'g'
+                && (buf[1] | 0x20) == (byte)'i'
+                && (buf[2] | 0x20) == (byte)'t'
+                && (buf[3] | 0x20) == (byte)'d'
+                && (buf[4] | 0x20) == (byte)'i'
+                && (buf[5] | 0x20) == (byte)'r'
+                && buf[6] == (byte)':';
         }
         catch
         {
@@ -604,32 +613,40 @@ public sealed class GitUtil : IGitUtil
     public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
     {
         List<string> repos = GetAllGitRepositoriesRecursively(directory);
+        if (repos.Count == 0)
+            return [];
+
         var dirty = new ConcurrentBag<string>();
 
         await Parallel.ForEachAsync(repos, CreateParallelOptions(cancellationToken), async (repo, ct) =>
-                      {
-                          if (await IsRepositoryDirty(repo, ct)
-                                  .NoSync())
-                              dirty.Add(repo);
-                      })
-                      .NoSync();
+        {
+            if (await IsRepositoryDirty(repo, ct).NoSync())
+                dirty.Add(repo);
+        }).NoSync();
 
-        return dirty.ToList();
+        // Avoid LINQ ToList()
+        var result = new List<string>();
+        foreach (string r in dirty)
+            result.Add(r);
+
+        return result;
     }
 
-    public async ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
+    public async ValueTask CommitAndPush(
+        string directory,
+        string message,
+        string token,
+        string? name = null,
+        string? email = null,
         CancellationToken cancellationToken = default)
     {
-        if (!await IsRepositoryDirty(directory, cancellationToken)
-                .NoSync())
+        if (!await IsRepositoryDirty(directory, cancellationToken).NoSync())
         {
             _logger.LogInformation("No changes to commit in {Dir}", directory);
             return;
         }
 
-        await Commit(directory, message, name, email, cancellationToken)
-            .NoSync();
-        await Push(directory, token, cancellationToken)
-            .NoSync();
+        await Commit(directory, message, name, email, cancellationToken).NoSync();
+        await Push(directory, token, cancellationToken).NoSync();
     }
 }

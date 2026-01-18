@@ -19,6 +19,10 @@ public class GitUtilTests : FixturedUnitTest
         _util = Resolve<IGitUtil>(true);
     }
 
+    [Fact]
+    public void Default()
+    { }
+
     [ManualFact]
     //[LocalFact]
     public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
