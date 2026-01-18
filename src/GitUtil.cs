@@ -343,7 +343,7 @@ public sealed class GitUtil : IGitUtil
         {
             try
             {
-                _directoryUtil.Delete(dir);
+                await _directoryUtil.Delete(dir, cancellationToken).NoSync();
             }
             catch
             {

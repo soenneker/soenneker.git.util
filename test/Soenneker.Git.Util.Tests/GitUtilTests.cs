@@ -39,14 +39,14 @@ public class GitUtilTests : FixturedUnitTest
     }
 
     [LocalFact]
-    public void Fetch_should_fetch()
+    public async ValueTask Fetch_should_fetch()
     {
-        _util.Fetch(@"");
+        await _util.Fetch(@"");
     }
 
     [LocalFact]
-    public void Pull_should_pull()
+    public async ValueTask Pull_should_pull()
     {
-        _util.Pull(@"");
+        await _util.Pull(@"");
     }
 }
