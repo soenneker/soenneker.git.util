@@ -1,4 +1,4 @@
-﻿using Soenneker.Extensions.Configuration;
+using Soenneker.Extensions.Configuration;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Microsoft.Extensions.Configuration;
@@ -7,6 +7,7 @@ using Polly;
 using Polly.Retry;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.Path.Abstract;
 using Soenneker.Utils.Process.Abstract;
 using System;
@@ -40,6 +41,7 @@ public sealed class GitUtil : IGitUtil
     private readonly IDirectoryUtil _directoryUtil;
     private readonly IProcessUtil _processUtil;
     private readonly IPathUtil _pathUtil;
+    private readonly IFileUtil _fileUtil;
 
     // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  Other fields  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
     private readonly string _gitBinaryPath;
@@ -62,12 +64,14 @@ public sealed class GitUtil : IGitUtil
         ILogger<GitUtil> logger,
         IDirectoryUtil directoryUtil,
         IProcessUtil processUtil,
-        IPathUtil pathUtil)
+        IPathUtil pathUtil,
+        IFileUtil fileUtil)
     {
         _logger = logger;
         _directoryUtil = directoryUtil;
         _processUtil = processUtil;
         _pathUtil = pathUtil;
+        _fileUtil = fileUtil;
 
         // Capture config once – avoids mid-run reload surprises
         _configToken = config.GetValueStrict<string>("Git:Token");
@@ -397,7 +401,7 @@ public sealed class GitUtil : IGitUtil
             await Run("add -A", directory, cancellationToken: cancellationToken).NoSync();
 
             string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken).NoSync();
-            await File.WriteAllTextAsync(msgFile, message, cancellationToken).NoSync();
+            await _fileUtil.Write(msgFile, message, true, cancellationToken).NoSync();
 
             try
             {
@@ -405,14 +409,7 @@ public sealed class GitUtil : IGitUtil
             }
             finally
             {
-                try
-                {
-                    File.Delete(msgFile);
-                }
-                catch
-                {
-                    /* ignored */
-                }
+                await _fileUtil.TryDeleteIfExists(msgFile, true, cancellationToken).NoSync();
             }
         }
         catch (Exception ex)
@@ -494,7 +491,7 @@ public sealed class GitUtil : IGitUtil
         if (listed.Count > 0)
             return;
 
-        if (!File.Exists(full))
+        if (!await _fileUtil.Exists(full, cancellationToken).NoSync())
             throw new FileNotFoundException("File not found in working tree", full);
 
         await Run($"add -- \"{rel}\"", directory, cancellationToken: cancellationToken).NoSync();

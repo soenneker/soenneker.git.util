@@ -1,7 +1,8 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Registrars;
+using Soenneker.Utils.File.Registrars;
 using Soenneker.Utils.Process.Registrars;
 
 namespace Soenneker.Git.Util.Registrars;
@@ -16,7 +17,7 @@ public static class GitUtilRegistrar
     /// </summary>
     public static IServiceCollection AddGitUtilAsSingleton(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().TryAddSingleton<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().AddFileUtilAsSingleton().TryAddSingleton<IGitUtil, GitUtil>();
 
         return services;
     }
@@ -26,7 +27,7 @@ public static class GitUtilRegistrar
     /// </summary>
     public static IServiceCollection AddGitUtilAsScoped(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().TryAddScoped<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().AddFileUtilAsScoped().TryAddScoped<IGitUtil, GitUtil>();
 
         return services;
     }
