@@ -22,6 +22,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Soenneker.Extensions.String;
 using Soenneker.Utils.Random;
 
 namespace Soenneker.Git.Util;
@@ -578,7 +579,11 @@ public sealed class GitUtil : IGitUtil
     /// </summary>
     private async IAsyncEnumerable<string> EnumerateRepoRoots(string root, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        if (root.IsNullOrWhiteSpace())
+            yield break;
+
+        if (!await _directoryUtil.Exists(root, cancellationToken)
+                                 .NoSync())
             yield break;
 
         var opts = new EnumerationOptions
@@ -589,12 +594,12 @@ public sealed class GitUtil : IGitUtil
             MatchCasing = MatchCasing.CaseInsensitive
         };
 
-        var enumerable = new FileSystemEnumerable<string>(root, static (ref FileSystemEntry e) => e.ToFullPath(), opts)
+        var enumerable = new FileSystemEnumerable<string>(root, static (ref e) => e.ToFullPath(), opts)
         {
-            ShouldIncludePredicate = static (ref FileSystemEntry e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
+            ShouldIncludePredicate = static (ref e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
 
             // Never descend into a .git dir itself – eliminates double hits
-            ShouldRecursePredicate = static (ref FileSystemEntry e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
+            ShouldRecursePredicate = static (ref e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
         };
 
         foreach (string gitPath in enumerable)
@@ -602,11 +607,12 @@ public sealed class GitUtil : IGitUtil
             cancellationToken.ThrowIfCancellationRequested();
 
             if (!await LooksLikeValidGitControlPath(gitPath)
-                    .ConfigureAwait(false))
+                    .NoSync())
                 continue;
 
-            var repoRoot = Path.GetDirectoryName(gitPath);
-            if (!string.IsNullOrEmpty(repoRoot))
+            string? repoRoot = Path.GetDirectoryName(gitPath);
+
+            if (repoRoot.HasContent())
                 yield return repoRoot;
         }
     }
