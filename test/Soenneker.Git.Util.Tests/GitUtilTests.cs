@@ -25,9 +25,9 @@ public class GitUtilTests : FixturedUnitTest
 
     [ManualFact]
     //[LocalFact]
-    public void GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
+    public async ValueTask GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
-        List<string> result = _util.GetAllGitRepositoriesRecursively(@"c:\git");
+        List<string> result = await _util.GetAllGitRepositoriesRecursively(@"c:\git");
         result.Should()
               .NotBeNullOrEmpty();
     }

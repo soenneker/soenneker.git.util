@@ -108,7 +108,7 @@ public interface IGitUtil
     /// Recursively scans <paramref name="directory"/> and returns every path
     /// that represents a Git repository root.
     /// </summary>
-    List<string> GetAllGitRepositoriesRecursively(string directory);
+    ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory);
 
     /// <summary>
     /// Returns the subset of repositories under <paramref name="directory"/>
