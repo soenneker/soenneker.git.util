@@ -46,7 +46,7 @@
         <PackageReference Include="Soenneker.Extensions.Configuration" Version="4.0.794" />
         <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="4.0.882" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="3.0.1027" PrivateAssets="analyzers;build" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.814" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.815" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2099" />
         <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1422" />
         <PackageReference Include="Soenneker.Utils.Runtime" Version="4.0.968" />
