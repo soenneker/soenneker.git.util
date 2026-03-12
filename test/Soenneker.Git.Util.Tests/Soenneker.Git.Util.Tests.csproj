@@ -27,7 +27,7 @@
     <PackageReference Include="xUnit.v3" Version="3.2.2" /></ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\src\Soenneker.Git.Util.csproj" />
+        <ProjectReference Include="..\..\src\Soenneker.Git.Util\Soenneker.Git.Util.csproj" />
     </ItemGroup>
 
     <ItemGroup>
