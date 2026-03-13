@@ -139,53 +139,56 @@ public sealed class GitUtil : IGitUtil
         if (_logGitCommands && log)
             _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", _gitBinaryPath, arguments, workingDirectory ?? "<null>");
 
-        // Avoid allocating a dictionary if caller didn't need one.
+        Dictionary<string, string>? actualEnv = env;
+
         if (env is null)
         {
-            env = new Dictionary<string, string>(capacity: 1)
+            actualEnv = new Dictionary<string, string>(1)
             {
                 [_gitTerminalPromptKey] = _gitTerminalPromptValue
             };
         }
-        else
+        else if (!env.ContainsKey(_gitTerminalPromptKey))
         {
-            // Don't overwrite caller value
-            env.TryAdd(_gitTerminalPromptKey, _gitTerminalPromptValue);
+            actualEnv = new Dictionary<string, string>(env.Count + 1, StringComparer.Ordinal);
+
+            foreach (KeyValuePair<string, string> pair in env)
+            {
+                actualEnv[pair.Key] = pair.Value;
+            }
+
+            actualEnv[_gitTerminalPromptKey] = _gitTerminalPromptValue;
         }
 
-        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, environmentalVars: env, log: log, cancellationToken: cancellationToken)
+        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, environmentalVars: actualEnv, log: log, cancellationToken: cancellationToken)
                                  .NoSync();
     }
 
-    private static async Task ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
+    private async Task ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
     {
         if (parallel)
         {
-            await Parallel.ForEachAsync(repos, new ParallelOptions
-                          {
-                              MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 8),
-                              CancellationToken = ct
-                          }, async (repo, token) =>
+            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), async (repo, token) =>
                           {
                               await action(repo, token)
                                   .NoSync();
                           })
                           .NoSync();
+
+            return;
         }
-        else
+
+        foreach (string repo in repos)
         {
-            foreach (string repo in repos)
-            {
-                ct.ThrowIfCancellationRequested();
-                await action(repo, ct)
-                    .NoSync();
-            }
+            ct.ThrowIfCancellationRequested();
+            await action(repo, ct)
+                .NoSync();
         }
     }
 
     public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
 
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Pull(repo, token, ct))
@@ -194,7 +197,7 @@ public sealed class GitUtil : IGitUtil
 
     public async ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
 
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct))
@@ -204,33 +207,33 @@ public sealed class GitUtil : IGitUtil
     public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false,
         CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => SwitchToRemoteBranch(repo, token, ct))
             .NoSync();
     }
 
-    public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken ct = default)
+    public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
 
-        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken))
+        await ForEachRepo(repos, parallel, cancellationToken, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken))
             .NoSync();
     }
 
-    public async ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken ct = default)
+    public async ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
 
-        await ForEachRepo(repos, parallel, ct, (repo, cancellationToken) => Push(repo, token, cancellationToken))
+        await ForEachRepo(repos, parallel, cancellationToken, (repo, cancellationToken) => Push(repo, token, cancellationToken))
             .NoSync();
     }
 
     public async ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root)
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
             .NoSync();
 
         await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
@@ -266,22 +269,12 @@ public sealed class GitUtil : IGitUtil
 
     public async ValueTask<bool> IsRepositoryDirty(string directory, CancellationToken cancellationToken = default)
     {
-        try
-        {
-            // Local working-tree changes?
-            if ((await Run("status --porcelain", directory, log: false, cancellationToken: cancellationToken)
-                    .NoSync()).Count > 0)
-                return true;
+        if (await HasWorkingTreeChanges(directory, cancellationToken)
+                .NoSync())
+            return true;
 
-            // Remote ahead/behind check (treat “no upstream” as “no divergence”)
-            return await HasRemoteDiverged(directory, cancellationToken)
-                .NoSync();
-        }
-        catch
-        {
-            // Play it safe – assume clean on error
-            return false;
-        }
+        return await HasRemoteDiverged(directory, cancellationToken)
+            .NoSync();
     }
 
     private async ValueTask<bool> HasRemoteDiverged(string directory, CancellationToken ct)
@@ -343,8 +336,9 @@ public sealed class GitUtil : IGitUtil
         {
             Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            string depthArg = shallow ? "--filter=blob:none --depth=1" : string.Empty;
-            var args = $"clone {depthArg} \"{uri}\" \"{directory}\"";
+            string args = shallow
+                ? $"clone --filter=blob:none --depth=1 \"{uri}\" \"{directory}\""
+                : $"clone \"{uri}\" \"{directory}\"";
 
             await Run(args, env: env, cancellationToken: cancellationToken)
                 .NoSync();
@@ -411,23 +405,25 @@ public sealed class GitUtil : IGitUtil
 
         try
         {
-            if (!await IsRepositoryDirty(directory, cancellationToken)
-                    .NoSync())
+            await Run("add -A", directory, cancellationToken: cancellationToken)
+                .NoSync();
+
+            bool hasStagedChanges = await HasStagedChanges(directory, cancellationToken)
+                .NoSync();
+            if (!hasStagedChanges)
             {
                 _logger.LogInformation("No changes detected in {Dir}", directory);
                 return;
             }
 
-            var env = new Dictionary<string, string>(capacity: 4)
+            var env = new Dictionary<string, string>(capacity: 5)
             {
                 ["GIT_AUTHOR_NAME"] = name,
                 ["GIT_AUTHOR_EMAIL"] = email,
                 ["GIT_COMMITTER_NAME"] = name,
-                ["GIT_COMMITTER_EMAIL"] = email
+                ["GIT_COMMITTER_EMAIL"] = email,
+                [_gitTerminalPromptKey] = _gitTerminalPromptValue
             };
-
-            await Run("add -A", directory, cancellationToken: cancellationToken)
-                .NoSync();
 
             string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken)
                                             .NoSync();
@@ -451,26 +447,46 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
+    public async ValueTask<bool> HasStagedChanges(string directory, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await Run("diff --cached --quiet", directory, log: false, cancellationToken: cancellationToken)
+                .NoSync();
+            return false;
+        }
+        catch
+        {
+            // Assumes your process util throws on non-zero exit code.
+            return true;
+        }
+    }
+
+    public async ValueTask<bool> HasWorkingTreeChanges(string directory, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            List<string> output = await Run("status --porcelain", directory, log: false, cancellationToken: cancellationToken)
+                .NoSync();
+            return output.Count > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async ValueTask Push(string directory, string token, CancellationToken cancellationToken = default)
     {
         try
         {
-            // 1. Get and sanity-check remote URL
-            string remoteUrl = await GetRemoteUrl(directory, cancellationToken)
-                .NoSync();
-            if (string.IsNullOrWhiteSpace(remoteUrl) || !remoteUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException($"Cannot push from {directory}. Remote 'origin' URL is missing or not HTTPS (was '{remoteUrl}').");
+            Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            // 2. Assemble PAT-bearing URL: https://x-access-token:TOKEN@github.com/ORG/REPO.git
-            string authenticatedUrl = BuildAuthenticatedUrl(remoteUrl, token);
-
-            // 3. Push HEAD -> remote branch in one shot, disabling helpers that might prompt/override
-            var pushCmd = $"-c credential.helper=\"\" push \"{authenticatedUrl}\" HEAD:{_defaultBranch}";
+            const string pushCmd = "-c credential.helper= -c core.askPass= push origin HEAD";
 
             await _retry429.ExecuteAsync(async () =>
                            {
-                               // IMPORTANT: do not log this command; it contains the token in the URL.
-                               await Run(pushCmd, directory, log: false, cancellationToken: cancellationToken)
+                               await Run(pushCmd, directory, env: env, log: false, cancellationToken: cancellationToken)
                                    .NoSync();
                            })
                            .NoSync();
@@ -481,26 +497,6 @@ public sealed class GitUtil : IGitUtil
         {
             _logger.LogError(ex, "Could not push in {Dir}", directory);
             throw;
-        }
-    }
-
-    private async ValueTask<string> GetRemoteUrl(string directory, CancellationToken cancellationToken)
-    {
-        try
-        {
-            List<string> output = await Run("remote get-url origin", directory, log: false, cancellationToken: cancellationToken)
-                .NoSync();
-            if (output.Count > 0 && !string.IsNullOrWhiteSpace(output[0]))
-                return output[0]
-                    .Trim();
-
-            _logger.LogWarning("Could not determine remote URL for 'origin' in directory {Dir}. Push will likely fail.", directory);
-            return string.Empty;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get remote URL for {Dir}", directory);
-            return string.Empty;
         }
     }
 
@@ -549,25 +545,25 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory)
+    public async ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Scanning for git repositories under {Root}", directory);
 
-        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        HashSet<string>? seen = null;
 
-        await foreach (string repoRoot in EnumerateRepoRoots(directory))
+        await foreach (string repoRoot in EnumerateRepoRoots(directory, cancellationToken))
         {
-            set.Add(repoRoot);
-        }
+            if (result.Count == 0)
+            {
+                result.Add(repoRoot);
+                continue;
+            }
 
-        if (set.Count == 0)
-            return [];
+            seen ??= new HashSet<string>(result, StringComparer.OrdinalIgnoreCase);
 
-        var result = new List<string>(set.Count);
-
-        foreach (string s in set)
-        {
-            result.Add(s);
+            if (seen.Add(repoRoot))
+                result.Add(repoRoot);
         }
 
         return result;
@@ -649,50 +645,33 @@ public sealed class GitUtil : IGitUtil
         }
     }
 
-    private static string BuildAuthenticatedUrl(string remoteHttps, string token)
-    {
-        var builder = new UriBuilder(remoteHttps)
-        {
-            UserName = "x-access-token",
-            Password = token
-        };
-
-        return builder.Uri.AbsoluteUri;
-    }
-
     public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(directory)
+        List<string> repos = await GetAllGitRepositoriesRecursively(directory, cancellationToken)
             .NoSync();
-
         if (repos.Count == 0)
             return [];
 
-        var dirty = new ConcurrentBag<string>();
+        var dirty = new ConcurrentQueue<string>();
 
         await Parallel.ForEachAsync(repos, CreateParallelOptions(cancellationToken), async (repo, ct) =>
                       {
                           if (await IsRepositoryDirty(repo, ct)
                                   .NoSync())
-                              dirty.Add(repo);
+                              dirty.Enqueue(repo);
                       })
                       .NoSync();
 
-        // Avoid LINQ ToList()
-        var result = new List<string>();
-        foreach (string r in dirty)
-            result.Add(r);
-
-        return result;
+        return [.. dirty];
     }
 
     public async ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default)
     {
-        if (!await IsRepositoryDirty(directory, cancellationToken)
+        if (!await HasWorkingTreeChanges(directory, cancellationToken)
                 .NoSync())
         {
-            _logger.LogInformation("No changes to commit in {Dir}", directory);
+            _logger.LogInformation("No local changes to commit in {Dir}", directory);
             return;
         }
 
