@@ -15,8 +15,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Enumeration;
-using System.Net;
-using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -50,11 +48,7 @@ public sealed class GitUtil : IGitUtil
 
     // Cache Authorization header per token to avoid base64 work every call
     private readonly ConcurrentDictionary<string, string> _authHeaderCache = new(StringComparer.Ordinal);
-
-    // Cache full env dictionaries per token to avoid per-command dictionary allocations
-    // NOTE: safe only if _processUtil.Start does NOT mutate the dictionary.
-    private readonly ConcurrentDictionary<string, Dictionary<string, string>> _authEnvCache = new(StringComparer.Ordinal);
-
+    
     private readonly int _maxParallelism;
 
     private const string _gitTerminalPromptKey = "GIT_TERMINAL_PROMPT";
@@ -82,12 +76,17 @@ public sealed class GitUtil : IGitUtil
 
         _maxParallelism = Math.Min(Environment.ProcessorCount, 8);
 
-        // .NET 10: HttpRequestException.StatusCode exists
-        _retry429 = Policy.Handle<HttpRequestException>(static ex => ex.StatusCode == HttpStatusCode.TooManyRequests)
-                          .WaitAndRetryAsync(retryCount: 5, sleepDurationProvider: static attempt =>
-                                  // cheaper than Math.Pow(2, attempt)
-                                  TimeSpan.FromSeconds(1 << attempt) + TimeSpan.FromMilliseconds(RandomUtil.Next(0, 500)),
-                              onRetry: (ex, ts, attempt, _) => _logger.LogWarning("429 detected – retry #{Attempt} in {Delay:n1}s", attempt, ts.TotalSeconds));
+        _retry429 = Policy
+                    .Handle<InvalidOperationException>(static ex =>
+                        ex.Message.Contains("429", StringComparison.OrdinalIgnoreCase) ||
+                        ex.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase) ||
+                        ex.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+                    .WaitAndRetryAsync(
+                        retryCount: 5,
+                        sleepDurationProvider: static attempt =>
+                            TimeSpan.FromSeconds(1 << attempt) + TimeSpan.FromMilliseconds(RandomUtil.Next(0, 500)),
+                        onRetry: (ex, ts, attempt, _) =>
+                            _logger.LogWarning("Git rate limit detected – retry #{Attempt} in {Delay:n1}s", attempt, ts.TotalSeconds));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -126,11 +125,14 @@ public sealed class GitUtil : IGitUtil
     {
         token ??= _configToken ?? throw new InvalidOperationException("A token is required but none was provided.");
 
-        return _authEnvCache.GetOrAdd(token, t => new Dictionary<string, string>(capacity: 2)
+        return new Dictionary<string, string>(capacity: 5, StringComparer.Ordinal)
         {
-            ["GIT_HTTP_EXTRAHEADER"] = BuildAuthHeaderCached(t),
-            [_gitTerminalPromptKey] = _gitTerminalPromptValue
-        });
+            [_gitTerminalPromptKey] = _gitTerminalPromptValue,
+            ["GIT_CONFIG_COUNT"] = "1",
+            ["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader",
+            ["GIT_CONFIG_VALUE_0"] = BuildAuthHeaderCached(token),
+            ["GIT_ASKPASS"] = ""
+        };
     }
 
     public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
