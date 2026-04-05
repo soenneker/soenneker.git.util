@@ -40,6 +40,36 @@ public interface IGitUtil
     ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Deletes the Git multi-pack-index file for every repository discovered beneath <paramref name="root"/>.
+    /// </summary>
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="parallel">
+    /// Whether repository operations should be performed in parallel.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rebuilds the Git multi-pack-index for every repository discovered beneath <paramref name="root"/>.
+    /// </summary>
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="parallel">
+    /// Whether repository operations should be performed in parallel.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs Git garbage collection for every repository discovered beneath <paramref name="root"/>.
+    /// </summary>
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="parallel">
+    /// Whether repository operations should be performed in parallel.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// For every Git repository discovered beneath <paramref name="root"/>,
     /// fetches, checks out the configured default branch, and hard-resets it
     /// to the corresponding remote branch.

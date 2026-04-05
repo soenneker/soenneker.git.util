@@ -28,21 +28,18 @@ namespace Soenneker.Git.Util;
 /// <inheritdoc cref="IGitUtil"/>
 public sealed class GitUtil : IGitUtil
 {
-    // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  Read-only config snapshot  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
     private readonly string _configToken;
     private readonly string _configName;
     private readonly string _configEmail;
     private readonly string _defaultBranch;
     private readonly bool _logGitCommands;
 
-    // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  Services  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
     private readonly ILogger<GitUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
     private readonly IProcessUtil _processUtil;
     private readonly IPathUtil _pathUtil;
     private readonly IFileUtil _fileUtil;
 
-    // ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬  Other fields  ▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
     private readonly string _gitBinaryPath;
     private readonly AsyncRetryPolicy _retry429;
 
@@ -203,6 +200,61 @@ public sealed class GitUtil : IGitUtil
             .NoSync();
 
         await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct))
+            .NoSync();
+    }
+
+    public async ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
+    {
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
+            .NoSync();
+
+        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
+            {
+                string multiPackIndexPath = Path.Join(repo, ".git", "objects", "pack", "multi-pack-index");
+
+                await _fileUtil.Delete(multiPackIndexPath, ignoreMissing: true, cancellationToken: ct)
+                               .NoSync();
+            })
+            .NoSync();
+    }
+
+    public async ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
+    {
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
+            .NoSync();
+
+        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
+            {
+                try
+                {
+                    await Run("repack -a -d", repo, cancellationToken: ct)
+                        .NoSync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Could not rebuild multi-pack-index for {Dir}", repo);
+                }
+            })
+            .NoSync();
+    }
+
+    public async ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
+    {
+        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
+            .NoSync();
+
+        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
+            {
+                try
+                {
+                    await Run("gc", repo, cancellationToken: ct)
+                        .NoSync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Could not garbage collect {Dir}", repo);
+                }
+            })
             .NoSync();
     }
 
