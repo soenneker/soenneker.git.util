@@ -70,6 +70,32 @@ public interface IGitUtil
     ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Runs Git garbage collection for every repository discovered beneath <paramref name="root"/>,
+    /// and if garbage collection fails for a repository, deletes and re-clones it from its origin remote.
+    /// </summary>
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="token">
+    /// Personal access token used for authentication when re-cloning. If <see langword="null"/>,
+    /// the default token from configuration is used.
+    /// </param>
+    /// <param name="parallel">
+    /// Whether repository operations should be performed in parallel.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask GarbageCollectAllRepositoriesOrReclone(string root, string? token = null, bool parallel = false,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs a full Git integrity check for every repository discovered beneath <paramref name="root"/>.
+    /// </summary>
+    /// <param name="root">Root directory to scan for repositories.</param>
+    /// <param name="parallel">
+    /// Whether repository operations should be performed in parallel.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask IntegrityCheckAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// For every Git repository discovered beneath <paramref name="root"/>,
     /// fetches, checks out the configured default branch, and hard-resets it
     /// to the corresponding remote branch.
@@ -131,6 +157,46 @@ public interface IGitUtil
     /// </param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
     ValueTask SwitchToRemoteBranch(string directory, string? token = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the Git multi-pack-index file for the specified repository.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask DeleteMultiPackIndex(string directory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rebuilds Git pack indexes for the specified repository.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask RepackIndexes(string directory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs Git garbage collection for the specified repository.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask GarbageCollect(string directory, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs Git garbage collection for the specified repository, and if it fails,
+    /// deletes and re-clones the repository from its origin remote.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="token">
+    /// Personal access token used for authentication when re-cloning. If <see langword="null"/>,
+    /// the default token from configuration is used.
+    /// </param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask GarbageCollectOrReclone(string directory, string? token = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs a full Git integrity check for the specified repository.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask<bool> IntegrityCheck(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Determines whether the specified directory contains a Git working tree.
@@ -225,6 +291,14 @@ public interface IGitUtil
     /// <param name="token">Personal access token used for authentication.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
     ValueTask Push(string directory, string token, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Performs a pull and then a push for the specified repository.
+    /// </summary>
+    /// <param name="directory">Repository directory.</param>
+    /// <param name="token">Personal access token used for authentication.</param>
+    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    ValueTask PullAndPush(string directory, string token, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Adds the specified file to the index only if it is not already tracked.

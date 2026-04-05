@@ -26,7 +26,7 @@ using Soenneker.Utils.Random;
 namespace Soenneker.Git.Util;
 
 /// <inheritdoc cref="IGitUtil"/>
-public sealed class GitUtil : IGitUtil
+public sealed partial class GitUtil : IGitUtil
 {
     private readonly string _configToken;
     private readonly string _configName;
@@ -183,121 +183,6 @@ public sealed class GitUtil : IGitUtil
             await action(repo, ct)
                 .NoSync();
         }
-    }
-
-    public async ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Pull(repo, token, ct))
-            .NoSync();
-    }
-
-    public async ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => Fetch(repo, token, ct))
-            .NoSync();
-    }
-
-    public async ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
-            {
-                string multiPackIndexPath = Path.Join(repo, ".git", "objects", "pack", "multi-pack-index");
-
-                await _fileUtil.Delete(multiPackIndexPath, ignoreMissing: true, cancellationToken: ct)
-                               .NoSync();
-            })
-            .NoSync();
-    }
-
-    public async ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
-            {
-                try
-                {
-                    await Run("repack -a -d", repo, cancellationToken: ct)
-                        .NoSync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Could not rebuild multi-pack-index for {Dir}", repo);
-                }
-            })
-            .NoSync();
-    }
-
-    public async ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
-            {
-                try
-                {
-                    await Run("gc", repo, cancellationToken: ct)
-                        .NoSync();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Could not garbage collect {Dir}", repo);
-                }
-            })
-            .NoSync();
-    }
-
-    public async ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false,
-        CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, ct) => SwitchToRemoteBranch(repo, token, ct))
-            .NoSync();
-    }
-
-    public async ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, cancellationToken) => Commit(repo, commitMessage, null, null, cancellationToken))
-            .NoSync();
-    }
-
-    public async ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, (repo, cancellationToken) => Push(repo, token, cancellationToken))
-            .NoSync();
-    }
-
-    public async ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default)
-    {
-        List<string> repos = await GetAllGitRepositoriesRecursively(root, cancellationToken)
-            .NoSync();
-
-        await ForEachRepo(repos, parallel, cancellationToken, async (repo, ct) =>
-            {
-                await Pull(repo, token, ct)
-                    .NoSync();
-                await Push(repo, token, ct)
-                    .NoSync();
-            })
-            .NoSync();
     }
 
     public async ValueTask SwitchToRemoteBranch(string directory, string? token = null, CancellationToken cancellationToken = default)
