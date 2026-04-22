@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using AwesomeAssertions;
 using Soenneker.Tests.Attributes.Local;
-using Soenneker.Facts.Manual;
 using Soenneker.Tests.HostedUnit;
 using Soenneker.Git.Util.Abstract;
 
@@ -22,7 +21,7 @@ public class GitUtilTests : HostedUnitTest
     public void Default()
     { }
 
-    [ManualFact]
+    [Skip("Manual")]
     //[LocalOnly]
     public async ValueTask GetAllGitRepositoriesRecursively_should_not_be_null_or_empty()
     {
