@@ -1,47 +1,28 @@
-## Test Execution (TUnit + Microsoft.Testing.Platform)
+## Test execution
 
-This repository uses **TUnit on Microsoft.Testing.Platform (MTP)**.
+If you need to execute specific tests, use Microsoft Testing Platform (MTP) filters, not VSTest filters.
 
-### ❌ Do NOT use
+Do not use:
 
 ```bash
 dotnet test --filter ...
 ````
 
-This is not supported and may result in zero tests running.
-
----
-
-### ✅ Use this instead
+Use:
 
 ```bash
 dotnet test -- --treenode-filter "<filter>"
 ```
 
-The `--` is required.
+Format:
 
----
-
-### Filter format
-
-```
+```text
 /<Assembly>/<Namespace>/<Class>/<Test>
 ```
 
-Wildcards (`*`) are supported.
-
----
-
-### Examples
-
-Single test:
+Examples:
 
 ```bash
 dotnet test -- --treenode-filter "/*/*/*/MyTest"
-```
-
-Class:
-
-```bash
 dotnet test -- --treenode-filter "/*/*/MyTestClass/*"
 ```
