@@ -220,7 +220,7 @@ public sealed partial class GitUtil : IGitUtil
     {
         try
         {
-            List<string> lines = await Run("rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct)
+            List<string> lines = await Run("-c safe.directory=* rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct)
                 .NoSync();
 
             if (lines.Count == 0)
@@ -230,17 +230,17 @@ public sealed partial class GitUtil : IGitUtil
                                    .AsSpan()
                                    .Trim();
 
-            // common clean case: "0\t0"
-            if (s.SequenceEqual("0\t0".AsSpan()))
+            // common clean case: "0\t0" or "0 0"
+            if (IsZeroZero(s))
                 return false;
 
-            int tab = s.IndexOf('\t');
-            if (tab <= 0 || tab >= s.Length - 1)
+            int separator = s.IndexOfAny([' ', '\t']);
+            if (separator <= 0 || separator >= s.Length - 1)
                 return false;
 
-            ReadOnlySpan<char> left = s[..tab]
+            ReadOnlySpan<char> left = s[..separator]
                 .Trim();
-            ReadOnlySpan<char> right = s[(tab + 1)..]
+            ReadOnlySpan<char> right = s[(separator + 1)..]
                 .Trim();
 
             return !(left.SequenceEqual("0".AsSpan()) && right.SequenceEqual("0".AsSpan()));
@@ -249,6 +249,11 @@ public sealed partial class GitUtil : IGitUtil
         {
             return false;
         }
+    }
+
+    private static bool IsZeroZero(ReadOnlySpan<char> value)
+    {
+        return value.Length == 3 && value[0] == '0' && (value[1] == '\t' || value[1] == ' ') && value[2] == '0';
     }
 
     public async ValueTask<bool> IsRepository(string directory, CancellationToken cancellationToken = default)
@@ -405,12 +410,13 @@ public sealed partial class GitUtil : IGitUtil
     {
         try
         {
-            List<string> output = await Run("status --porcelain", directory, log: false, cancellationToken: cancellationToken)
+            List<string> output = await Run("-c safe.directory=* status --porcelain", directory, log: false, cancellationToken: cancellationToken)
                 .NoSync();
             return output.Count > 0;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Could not determine working tree status for {Dir}", directory);
             return false;
         }
     }
