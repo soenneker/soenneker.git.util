@@ -97,8 +97,8 @@ public interface IGitUtil
 
     /// <summary>
     /// For every Git repository discovered beneath <paramref name="root"/>,
-    /// fetches, checks out the configured default branch, and hard-resets it
-    /// to the corresponding remote branch.
+    /// fetches, force-checks out the configured default branch, hard-resets it
+    /// to the corresponding remote branch, and removes untracked files.
     /// </summary>
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="token">
@@ -147,8 +147,9 @@ public interface IGitUtil
     ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fetches, checks out the configured default branch, and hard-resets it
-    /// to the corresponding remote branch for the specified repository.
+    /// Fetches, force-checks out the configured default branch, hard-resets it
+    /// to the corresponding remote branch, and removes untracked files for the
+    /// specified repository.
     /// </summary>
     /// <param name="directory">Repository directory.</param>
     /// <param name="token">

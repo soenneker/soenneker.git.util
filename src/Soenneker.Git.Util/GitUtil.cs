@@ -191,11 +191,19 @@ public sealed partial class GitUtil : IGitUtil
         {
             Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            await Run("fetch origin", directory, env: env, cancellationToken: cancellationToken)
+            await Run("fetch origin --filter=blob:none --prune", directory, env: env, cancellationToken: cancellationToken)
                 .NoSync();
-            await Run($"checkout {_defaultBranch}", directory, cancellationToken: cancellationToken)
+
+            await Run("reset --hard", directory, cancellationToken: cancellationToken)
                 .NoSync();
+
+            await Run($"checkout -B {_defaultBranch} origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
+                .NoSync();
+
             await Run($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
+                .NoSync();
+
+            await Run("clean -fd", directory, cancellationToken: cancellationToken)
                 .NoSync();
 
             _logger.LogInformation("Switched {Dir} to remote branch '{Branch}'", directory, _defaultBranch);
