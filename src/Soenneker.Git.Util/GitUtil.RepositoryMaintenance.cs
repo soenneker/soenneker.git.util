@@ -9,8 +9,17 @@ using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Git.Util;
 
+/// <summary>
+/// Represents the git util.
+/// </summary>
 public sealed partial class GitUtil
 {
+    /// <summary>
+    /// Deletes multi pack index.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask DeleteMultiPackIndex(string directory, CancellationToken cancellationToken = default)
     {
         string multiPackIndexPath = Path.Join(directory, ".git", "objects", "pack", "multi-pack-index");
@@ -19,6 +28,12 @@ public sealed partial class GitUtil
                        .NoSync();
     }
 
+    /// <summary>
+    /// Executes the repack indexes operation.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask RepackIndexes(string directory, CancellationToken cancellationToken = default)
     {
         try
@@ -32,6 +47,12 @@ public sealed partial class GitUtil
         }
     }
 
+    /// <summary>
+    /// Executes the garbage collect operation.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask GarbageCollect(string directory, CancellationToken cancellationToken = default)
     {
         try
@@ -47,6 +68,13 @@ public sealed partial class GitUtil
         }
     }
 
+    /// <summary>
+    /// Executes the garbage collect or reclone operation.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="token">The token.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask GarbageCollectOrReclone(string directory, string? token = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Garbage collecting {Dir}...", directory);
@@ -83,6 +111,12 @@ public sealed partial class GitUtil
         }
     }
 
+    /// <summary>
+    /// Executes the integrity check operation.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<bool> IntegrityCheck(string directory, CancellationToken cancellationToken = default)
     {
         try
@@ -99,6 +133,13 @@ public sealed partial class GitUtil
         }
     }
 
+    /// <summary>
+    /// Executes the pull and push operation.
+    /// </summary>
+    /// <param name="directory">The directory.</param>
+    /// <param name="token">The token.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask PullAndPush(string directory, string token, CancellationToken cancellationToken = default)
     {
         await Pull(directory, token, cancellationToken)
