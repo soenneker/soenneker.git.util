@@ -48,6 +48,6 @@
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.892" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2215" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1518" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1519" />
 </ItemGroup>
 </Project>
