@@ -16,12 +16,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Enumeration;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.String;
 using Soenneker.Utils.Random;
+using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Git.Util;
 
@@ -67,7 +67,7 @@ public sealed partial class GitUtil : IGitUtil
         _defaultBranch = config.GetValue<string>("Git:DefaultBranch") ?? "main";
         _logGitCommands = config.GetValue<bool>("Git:Log");
 
-        _gitBinaryPath = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        _gitBinaryPath = RuntimeUtil.IsWindows()
             ? Path.Join(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe")
             : Path.Join(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "git.sh");
 
