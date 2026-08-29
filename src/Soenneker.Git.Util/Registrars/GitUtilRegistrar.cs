@@ -15,6 +15,8 @@ public static class GitUtilRegistrar
     /// <summary>
     /// Adds <see cref="IGitUtil"/> as a singleton service. <para/>
     /// </summary>
+    /// <param name="services">Service collection that receives the registration.</param>
+    /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddGitUtilAsSingleton(this IServiceCollection services)
     {
         services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().AddFileUtilAsSingleton().TryAddSingleton<IGitUtil, GitUtil>();
@@ -25,6 +27,8 @@ public static class GitUtilRegistrar
     /// <summary>
     /// Adds <see cref="IGitUtil"/> as a scoped service. <para/>
     /// </summary>
+    /// <param name="services">Service collection that receives the registration.</param>
+    /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddGitUtilAsScoped(this IServiceCollection services)
     {
         services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().AddFileUtilAsScoped().TryAddScoped<IGitUtil, GitUtil>();
