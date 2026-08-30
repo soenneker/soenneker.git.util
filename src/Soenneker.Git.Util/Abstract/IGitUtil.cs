@@ -79,7 +79,7 @@ public interface IGitUtil
     ValueTask IntegrityCheckAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Switches all Git Repositories To Remote Branch.
+    /// Synchronizes every discovered repository to the configured remote branch when doing so cannot discard local work.
     /// </summary>
     /// <param name="root">Root directory or repository to process.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
@@ -121,7 +121,8 @@ public interface IGitUtil
     ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Switches to Remote Branch.
+    /// Fetches the configured remote branch and checks it out when the working tree is clean and local <c>HEAD</c> is its ancestor.
+    /// The operation refuses repositories with working-tree changes, unpushed commits, or divergent history.
     /// </summary>
     /// <param name="directory">Directory to read from or write to.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
@@ -154,12 +155,12 @@ public interface IGitUtil
     ValueTask GarbageCollect(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Garbage-collects or Reclone.
+    /// Runs garbage collection, or replaces the repository from <c>origin</c> when garbage collection fails.
     /// </summary>
     /// <param name="directory">Directory to read from or write to.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>A task that completes when the garbage collect or reclone operation is complete.</returns>
+    /// <returns>A task that completes after garbage collection or a successful replacement.</returns>
     ValueTask GarbageCollectOrReclone(string directory, string? token = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -203,23 +204,23 @@ public interface IGitUtil
     ValueTask<bool> HasWorkingTreeChanges(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clones git.
+    /// Clones a repository into the specified directory.
     /// </summary>
-    /// <param name="uri">Receives the normalized absolute URI when parsing succeeds.</param>
-    /// <param name="directory">Directory to read from or write to.</param>
-    /// <param name="token">Arbitrary utility token to append.</param>
+    /// <param name="uri">The repository URI.</param>
+    /// <param name="directory">The destination directory.</param>
+    /// <param name="token">Optional GitHub access token overriding configuration.</param>
     /// <param name="shallow">Whether to perform a shallow clone.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
     /// <returns>A task that completes when the clone operation is complete.</returns>
     ValueTask Clone(string uri, string directory, string? token = null, bool shallow = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Clones to Temp Directory.
+    /// Creates a temporary directory and shallow-clones a repository into it.
     /// </summary>
-    /// <param name="uri">Receives the normalized absolute URI when parsing succeeds.</param>
-    /// <param name="token">Arbitrary utility token to append.</param>
+    /// <param name="uri">The repository URI.</param>
+    /// <param name="token">Optional GitHub access token overriding configuration.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>A task whose result is the text returned by clone To Temp Directory.</returns>
+    /// <returns>The temporary clone path. The caller owns its cleanup.</returns>
     ValueTask<string> CloneToTempDirectory(string uri, string? token = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -230,12 +231,12 @@ public interface IGitUtil
     /// <param name="env">Optional environment variables.</param>
     /// <param name="log">Whether command execution should be logged.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>A task whose result is the collection returned by run.</returns>
+    /// <returns>The process output lines.</returns>
     ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Pulls git.
+    /// Pulls the configured branch from <c>origin</c>.
     /// </summary>
     /// <param name="directory">Directory to read from or write to.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
@@ -283,7 +284,7 @@ public interface IGitUtil
     ValueTask AddIfNotExists(string directory, string relativeOrAbsolutePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Fetches git.
+    /// Fetches and prunes <c>origin</c> using blob filtering.
     /// </summary>
     /// <param name="directory">Directory to read from or write to.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
@@ -296,7 +297,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="directory">Root directory to scan.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>A task whose result is the collection returned by get All Git Repositories Recursively.</returns>
+    /// <returns>Discovered repository root paths.</returns>
     ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -305,7 +306,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="directory">Root directory to scan.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>A task whose result is the collection returned by get All Dirty Repositories.</returns>
+    /// <returns>Repository root paths with working-tree changes or upstream divergence.</returns>
     ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>

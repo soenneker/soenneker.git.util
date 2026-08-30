@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -97,6 +98,35 @@ public class GitUtilTests : HostedUnitTest
 
             result.Should()
                   .Contain(repo);
+        }
+        finally
+        {
+            DeleteDirectory(root);
+        }
+    }
+
+    [Test]
+    public async ValueTask SwitchToRemoteBranch_should_not_discard_working_tree_changes()
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        string remote = Path.Join(root, "remote.git");
+        string repo = Path.Join(root, "repo");
+
+        try
+        {
+            await RunGit("init --bare --initial-branch=main remote.git", root);
+            await RunGit($"clone \"{remote}\" repo", root);
+            await ConfigureGitUser(repo);
+            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "committed");
+            await RunGit("add tracked.txt", repo);
+            await RunGit("commit -m initial", repo);
+            await RunGit("push -u origin main", repo);
+            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "local change");
+
+            Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo);
+
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"))).Should().Be("local change");
         }
         finally
         {

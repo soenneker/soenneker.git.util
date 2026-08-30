@@ -44,6 +44,7 @@ public sealed partial class GitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not repack indexes for {Dir}", directory);
+            throw;
         }
     }
 
@@ -65,6 +66,7 @@ public sealed partial class GitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not garbage collect {Dir}", directory);
+            throw;
         }
     }
 
@@ -84,9 +86,13 @@ public sealed partial class GitUtil
             await Run("gc", directory, cancellationToken: cancellationToken)
                 .NoSync();
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Garbage collection failed for {Dir}; deleting and re-cloning from origin...", directory);
+            _logger.LogError(ex, "Garbage collection failed for {Dir}; preparing a replacement clone from origin...", directory);
 
             try
             {
@@ -97,16 +103,49 @@ public sealed partial class GitUtil
                     throw new InvalidOperationException($"Could not determine origin URL for {directory}.");
 
                 string originUrl = originOutput[0].Trim();
+                string fullDirectory = Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory));
+                string? parentDirectory = Path.GetDirectoryName(fullDirectory);
 
-                await _directoryUtil.Delete(directory, cancellationToken)
-                    .NoSync();
+                if (parentDirectory.IsNullOrWhiteSpace())
+                    throw new InvalidOperationException($"Could not determine the parent directory for {fullDirectory}.");
 
-                await Clone(originUrl, directory, token, cancellationToken: cancellationToken)
-                    .NoSync();
+                string directoryName = Path.GetFileName(fullDirectory);
+                string replacementDirectory = Path.Combine(parentDirectory, $".{directoryName}.reclone-{Guid.NewGuid():N}");
+                string backupDirectory = Path.Combine(parentDirectory, $".{directoryName}.backup-{Guid.NewGuid():N}");
+                var originalMoved = false;
+
+                try
+                {
+                    await Clone(originUrl, replacementDirectory, token, cancellationToken: cancellationToken)
+                        .NoSync();
+
+                    Directory.Move(fullDirectory, backupDirectory);
+                    originalMoved = true;
+                    Directory.Move(replacementDirectory, fullDirectory);
+
+                    await _directoryUtil.Delete(backupDirectory, CancellationToken.None)
+                        .NoSync();
+                }
+                catch
+                {
+                    if (originalMoved && !Directory.Exists(fullDirectory) && Directory.Exists(backupDirectory))
+                        Directory.Move(backupDirectory, fullDirectory);
+
+                    throw;
+                }
+                finally
+                {
+                    if (Directory.Exists(replacementDirectory))
+                    {
+                        await _directoryUtil.Delete(replacementDirectory, CancellationToken.None)
+                            .NoSync();
+                    }
+                }
             }
             catch (Exception recloneEx)
             {
                 _logger.LogError(recloneEx, "Could not recover {Dir} by re-cloning after garbage collection failure", directory);
+                throw;
             }
         }
     }

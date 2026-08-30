@@ -5,7 +5,7 @@
 
 # Soenneker.Git.Util
 
-High-level, asynchronous helpers for working with Git repositories, including discovery, cloning, fetching, pulling, committing, pushing, and bulk repository operations.
+Asynchronous Git operations backed by bundled Windows and Linux Git distributions, with repository discovery and optional bounded parallel execution across multiple repositories.
 
 ## Install
 
@@ -13,47 +13,86 @@ High-level, asynchronous helpers for working with Git repositories, including di
 dotnet add package Soenneker.Git.Util
 ```
 
-## Quick start
+## Configure and register
 
 ```csharp
 using Soenneker.Git.Util.Registrars;
 using Microsoft.Extensions.DependencyInjection;
 
-var services = new ServiceCollection();
-var result = services.AddGitUtilAsSingleton();
+services.AddGitUtilAsSingleton();
 ```
 
-Adds `IGitUtil` as a singleton service.
+Scoped registration is available through `AddGitUtilAsScoped()`.
 
-## What you get
+The utility reads its default credentials and branch once when it is constructed:
 
-- `IGitUtil` — High-level, asynchronous helpers for working with Git repositories, including discovery, cloning, fetching, pulling, committing, pushing, and bulk repository operations.
-- `GitUtilRegistrar` — A utility library for useful and common Git operations.
-- `GitUtil` — Represents the git util.
+```json
+{
+  "Git": {
+    "Token": "<GitHub token>",
+    "Name": "Commit author",
+    "Email": "author@example.com",
+    "DefaultBranch": "main",
+    "Log": false
+  }
+}
+```
+
+`Token`, `Name`, and `Email` are required configuration values. A token supplied to an individual method overrides the configured token. Authentication is non-interactive and is applied to GitHub HTTPS requests without putting the token in the remote URL or command log.
+
+## Common operations
+
+```csharp
+IGitUtil git = serviceProvider.GetRequiredService<IGitUtil>();
+
+string checkout = await git.CloneToTempDirectory(
+    "https://github.com/example/project.git",
+    cancellationToken: cancellationToken);
+
+await git.Fetch(checkout, cancellationToken: cancellationToken);
+
+if (await git.HasWorkingTreeChanges(checkout, cancellationToken))
+{
+    await git.Commit(checkout, "Update generated files", cancellationToken: cancellationToken);
+    await git.Push(checkout, token, cancellationToken);
+}
+```
+
+`CloneToTempDirectory` returns a shallow clone and transfers ownership of that temporary directory to the caller.
+
+## Repository discovery and batches
+
+```csharp
+IReadOnlyList<string> dirty =
+    await git.GetAllDirtyRepositories(@"C:\git", cancellationToken);
+
+await git.FetchAllGitRepositories(
+    @"C:\git",
+    parallel: true,
+    cancellationToken: cancellationToken);
+```
+
+Discovery accepts either a repository root or a directory containing repositories. Batch operations are sequential by default. With `parallel: true`, concurrency is bounded to at most eight repositories and the processor count.
 
 ## API at a glance
 
 | API | What it does | Result / important behavior |
 | --- | --- | --- |
-| `IGitUtil.PullAllGitRepositories(root, token, parallel, cancellationToken)` | Pulls all Git Repositories. | A task that completes when the pull all git repositories operation is complete. |
-| `IGitUtil.FetchAllGitRepositories(root, token, parallel, cancellationToken)` | Fetches all Git Repositories. | A task that completes when the fetch all git repositories operation is complete. |
-| `IGitUtil.DeleteMultiPackIndexesForAllRepositories(root, parallel, cancellationToken)` | Deletes the Git multi-pack-index file for every repository discovered beneath `root`. | Completes when the requested deletion has finished. |
-| `IGitUtil.RepackIndexesForAllRepositories(root, parallel, cancellationToken)` | Rebuilds the Git multi-pack-index for every repository discovered beneath `root`. | A task that completes when the repack indexes for all repositories operation is complete. |
-| `IGitUtil.GarbageCollectAllRepositories(root, parallel, cancellationToken)` | Runs Git garbage collection for every repository discovered beneath `root`. | A task that completes when the garbage collect all repositories operation is complete. |
-| `IGitUtil.GarbageCollectAllRepositoriesOrReclone(root, token, parallel, cancellationToken)` | Garbage-collects all Repositories Or Reclone. | A task that completes when the garbage collect all repositories or reclone operation is complete. |
-| `IGitUtil.IntegrityCheckAllRepositories(root, parallel, cancellationToken)` | Runs a full Git integrity check for every repository discovered beneath `root`. | A task that completes when the integrity check all repositories operation is complete. |
-| `IGitUtil.SwitchAllGitRepositoriesToRemoteBranch(root, token, parallel, cancellationToken)` | Switches all Git Repositories To Remote Branch. | A task that completes when the switch all git repositories to remote branch operation is complete. |
-| `IGitUtil.CommitAllRepositories(root, commitMessage, parallel, cancellationToken)` | Commits all repositories discovered beneath `root` using the supplied commit message. | A task that completes when the commit all repositories operation is complete. |
-| `IGitUtil.PushAllRepositories(root, token, parallel, cancellationToken)` | Pushes every Git repository discovered beneath `root`. | A task that completes when the push all repositories operation is complete. |
-| `IGitUtil.PullAndPushAllRepositories(root, token, parallel, cancellationToken)` | For every Git repository discovered beneath `root`, performs a pull and then a push. | A task that completes when the pull and push all repositories operation is complete. |
-| `IGitUtil.SwitchToRemoteBranch(directory, token, cancellationToken)` | Switches to Remote Branch. | A task that completes when the switch to remote branch operation is complete. |
-| `IGitUtil.GarbageCollectOrReclone(directory, token, cancellationToken)` | Garbage-collects or Reclone. | A task that completes when the garbage collect or reclone operation is complete. |
-| `IGitUtil.IsRepository(directory, cancellationToken)` | Determines whether the specified directory contains a Git working tree. | true if the specified directory contains a Git working tree; otherwise, false. |
-| `IGitUtil.IsRepositoryDirty(directory, cancellationToken)` | Determines whether the repository has local working tree changes or has diverged from its upstream. | true if the repository has local working tree changes or has diverged from its upstream; otherwise, false. |
-| `IGitUtil.HasStagedChanges(directory, cancellationToken)` | Determines whether the repository has staged changes. | true if the repository has staged changes; otherwise, false. |
-| `IGitUtil.HasWorkingTreeChanges(directory, cancellationToken)` | Determines whether the repository has working tree changes. | true if the repository has working tree changes; otherwise, false. |
-| `IGitUtil.Clone(uri, directory, token, shallow, cancellationToken)` | Clones git. | A task that completes when the clone operation is complete. |
+| `Clone`, `CloneToTempDirectory` | Clone a repository, optionally with blob filtering and depth one. | Temporary clones must be deleted by the caller. |
+| `Fetch`, `Pull`, `Push`, `PullAndPush` | Exchange commits with `origin` using the configured branch. | Failures propagate to the caller. |
+| `Commit`, `CommitAndPush` | Stage all changes and create a commit when anything is staged. | Uses explicit identity values or the configured defaults. |
+| `IsRepository`, `IsRepositoryDirty`, `HasStagedChanges`, `HasWorkingTreeChanges` | Inspect repository state. | `IsRepositoryDirty` also detects upstream divergence. |
+| `GetAllGitRepositoriesRecursively`, `GetAllDirtyRepositories` | Find repository roots beneath a directory. | Also recognizes worktree and submodule `.git` files. |
+| `*AllRepositories` methods | Apply fetch, pull, commit, push, integrity, or maintenance operations to discovered repositories. | Can run sequentially or with bounded parallelism. |
+| `Run` | Execute arbitrary arguments with the bundled Git binary. | This is a raw escape hatch; only pass trusted arguments. |
+
+## Synchronization and recovery safety
+
+`SwitchToRemoteBranch` fetches `origin`, then checks out the configured branch only when the working tree is clean and local `HEAD` is an ancestor of the remote branch. It refuses uncommitted changes, unpushed commits, and divergent history instead of resetting or cleaning them.
+
+`GarbageCollectOrReclone` is intended for repository recovery. If garbage collection fails, it clones a replacement beside the repository first, swaps it into place only after cloning succeeds, and restores the original directory if the swap fails. A successful replacement intentionally discards local-only repository state, so use this method only when recloning from `origin` is acceptable.
 
 ## Practical notes
 
-- Cancellation stops pending work; it does not undo work that has already completed.
+- Cancellation stops process execution and pending batch work; it cannot undo a Git operation that already completed.
+- `DeleteMultiPackIndex`, repack, garbage collection, commits, pushes, and recovery methods mutate repositories. Use the inspection methods first when caller-owned work may be present.

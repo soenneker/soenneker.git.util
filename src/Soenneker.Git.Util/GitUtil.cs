@@ -25,7 +25,6 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Git.Util;
 
-/// <inheritdoc cref="IGitUtil"/>
 public sealed partial class GitUtil : IGitUtil
 {
     private readonly string _configToken;
@@ -194,16 +193,13 @@ public sealed partial class GitUtil : IGitUtil
             await Run("fetch origin --filter=blob:none --prune", directory, env: env, cancellationToken: cancellationToken)
                 .NoSync();
 
-            await Run("reset --hard", directory, cancellationToken: cancellationToken)
+            if (await HasWorkingTreeChanges(directory, cancellationToken).NoSync())
+                throw new InvalidOperationException($"Refusing to switch {directory} because it contains working-tree changes.");
+
+            await Run($"merge-base --is-ancestor HEAD origin/{_defaultBranch}", directory, log: false, cancellationToken: cancellationToken)
                 .NoSync();
 
             await Run($"checkout -B {_defaultBranch} origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
-                .NoSync();
-
-            await Run($"reset --hard origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
-                .NoSync();
-
-            await Run("clean -fd", directory, cancellationToken: cancellationToken)
                 .NoSync();
 
             _logger.LogInformation("Switched {Dir} to remote branch '{Branch}'", directory, _defaultBranch);
@@ -211,6 +207,7 @@ public sealed partial class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not switch to remote branch for {Dir}", directory);
+            throw;
         }
     }
 
@@ -340,13 +337,10 @@ public sealed partial class GitUtil : IGitUtil
                 .NoSync();
             _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
-        catch (InvalidOperationException ex)
-        {
-            _logger.LogError(ex, "Merge conflict when pulling {Dir}", directory);
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not pull in {Dir}", directory);
+            throw;
         }
     }
 
@@ -396,6 +390,7 @@ public sealed partial class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not commit in {Dir}", directory);
+            throw;
         }
     }
 
@@ -425,7 +420,7 @@ public sealed partial class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Could not determine working tree status for {Dir}", directory);
-            return false;
+            throw;
         }
     }
 
@@ -495,6 +490,7 @@ public sealed partial class GitUtil : IGitUtil
         catch (Exception ex)
         {
             _logger.LogError(ex, "Could not fetch in {Dir}", directory);
+            throw;
         }
     }
 
