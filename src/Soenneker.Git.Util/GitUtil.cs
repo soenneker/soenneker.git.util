@@ -346,6 +346,12 @@ public sealed partial class GitUtil : IGitUtil
 
     public async ValueTask Commit(string directory, string message, string? name = null, string? email = null, CancellationToken cancellationToken = default)
     {
+        await TryCommit(directory, message, name, email, cancellationToken)
+            .NoSync();
+    }
+
+    private async ValueTask<bool> TryCommit(string directory, string message, string? name, string? email, CancellationToken cancellationToken)
+    {
         name ??= _configName;
         email ??= _configEmail;
 
@@ -359,7 +365,7 @@ public sealed partial class GitUtil : IGitUtil
             if (!hasStagedChanges)
             {
                 _logger.LogInformation("No changes detected in {Dir}", directory);
-                return;
+                return false;
             }
 
             var env = new Dictionary<string, string>(capacity: 5)
@@ -380,6 +386,8 @@ public sealed partial class GitUtil : IGitUtil
             {
                 await Run($"commit -F \"{msgFile}\"", directory, env: env, cancellationToken: cancellationToken)
                     .NoSync();
+
+                return true;
             }
             finally
             {
@@ -617,15 +625,13 @@ public sealed partial class GitUtil : IGitUtil
     public async ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default)
     {
-        if (!await HasWorkingTreeChanges(directory, cancellationToken)
+        if (!await TryCommit(directory, message, name, email, cancellationToken)
                 .NoSync())
         {
             _logger.LogInformation("No local changes to commit in {Dir}", directory);
             return;
         }
 
-        await Commit(directory, message, name, email, cancellationToken)
-            .NoSync();
         await Push(directory, token, cancellationToken)
             .NoSync();
     }
