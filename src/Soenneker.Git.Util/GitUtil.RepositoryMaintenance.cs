@@ -119,23 +119,26 @@ public sealed partial class GitUtil
                     await Clone(originUrl, replacementDirectory, token, cancellationToken: cancellationToken)
                         .NoSync();
 
-                    Directory.Move(fullDirectory, backupDirectory);
+                    await _directoryUtil.Move(fullDirectory, backupDirectory, log: false, cancellationToken).NoSync();
                     originalMoved = true;
-                    Directory.Move(replacementDirectory, fullDirectory);
+                    await _directoryUtil.Move(replacementDirectory, fullDirectory, log: false, cancellationToken).NoSync();
 
                     await _directoryUtil.Delete(backupDirectory, CancellationToken.None)
                         .NoSync();
                 }
                 catch
                 {
-                    if (originalMoved && !Directory.Exists(fullDirectory) && Directory.Exists(backupDirectory))
-                        Directory.Move(backupDirectory, fullDirectory);
+                    if (originalMoved && !await _directoryUtil.Exists(fullDirectory, CancellationToken.None).NoSync() &&
+                        await _directoryUtil.Exists(backupDirectory, CancellationToken.None).NoSync())
+                    {
+                        await _directoryUtil.Move(backupDirectory, fullDirectory, log: false, CancellationToken.None).NoSync();
+                    }
 
                     throw;
                 }
                 finally
                 {
-                    if (Directory.Exists(replacementDirectory))
+                    if (await _directoryUtil.Exists(replacementDirectory, CancellationToken.None).NoSync())
                     {
                         await _directoryUtil.Delete(replacementDirectory, CancellationToken.None)
                             .NoSync();
