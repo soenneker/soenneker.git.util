@@ -4,6 +4,7 @@ using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Registrars;
 using Soenneker.Utils.File.Registrars;
 using Soenneker.Utils.Process.Registrars;
+using Soenneker.Utils.Paths.Resources.Registrars;
 
 namespace Soenneker.Git.Util.Registrars;
 
@@ -19,7 +20,11 @@ public static class GitUtilRegistrar
     /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddGitUtilAsSingleton(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().AddFileUtilAsSingleton().TryAddSingleton<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsSingleton()
+                .AddProcessUtilAsSingleton()
+                .AddFileUtilAsSingleton()
+                .AddResourcesPathUtilAsSingleton()
+                .TryAddSingleton<IGitUtil, GitUtil>();
 
         return services;
     }
@@ -31,7 +36,11 @@ public static class GitUtilRegistrar
     /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddGitUtilAsScoped(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().AddFileUtilAsScoped().TryAddScoped<IGitUtil, GitUtil>();
+        services.AddDirectoryUtilAsScoped()
+                .AddProcessUtilAsScoped()
+                .AddFileUtilAsScoped()
+                .AddResourcesPathUtilAsScoped()
+                .TryAddScoped<IGitUtil, GitUtil>();
 
         return services;
     }

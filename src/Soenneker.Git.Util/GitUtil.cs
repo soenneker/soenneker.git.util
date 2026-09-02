@@ -10,6 +10,7 @@ using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.Path.Abstract;
 using Soenneker.Utils.Process.Abstract;
+using Soenneker.Utils.Paths.Resources.Abstract;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -38,8 +39,9 @@ public sealed partial class GitUtil : IGitUtil
     private readonly IProcessUtil _processUtil;
     private readonly IPathUtil _pathUtil;
     private readonly IFileUtil _fileUtil;
+    private readonly IResourcesPathUtil _resourcesPathUtil;
 
-    private readonly string _gitBinaryPath;
+    private readonly string _gitBinaryRelativePath;
     private readonly AsyncRetryPolicy _retry429;
 
     // Cache Authorization header per token to avoid base64 work every call
@@ -52,12 +54,19 @@ public sealed partial class GitUtil : IGitUtil
 
     public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil, IPathUtil pathUtil,
         IFileUtil fileUtil)
+        : this(config, logger, directoryUtil, processUtil, pathUtil, fileUtil, new Soenneker.Utils.Paths.Resources.ResourcesPathUtil(directoryUtil))
+    {
+    }
+
+    public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil, IPathUtil pathUtil,
+        IFileUtil fileUtil, IResourcesPathUtil resourcesPathUtil)
     {
         _logger = logger;
         _directoryUtil = directoryUtil;
         _processUtil = processUtil;
         _pathUtil = pathUtil;
         _fileUtil = fileUtil;
+        _resourcesPathUtil = resourcesPathUtil;
 
         // Capture config once – avoids mid-run reload surprises
         _configToken = config.GetValueStrict<string>("Git:Token");
@@ -66,9 +75,9 @@ public sealed partial class GitUtil : IGitUtil
         _defaultBranch = config.GetValue<string>("Git:DefaultBranch") ?? "main";
         _logGitCommands = config.GetValue<bool>("Git:Log");
 
-        _gitBinaryPath = RuntimeUtil.IsWindows()
-            ? Path.Join(AppContext.BaseDirectory, "Resources", "win-x64", "git", "cmd", "git.exe")
-            : Path.Join(AppContext.BaseDirectory, "Resources", "linux-x64", "git", "git.sh");
+        _gitBinaryRelativePath = RuntimeUtil.IsWindows()
+            ? Path.Join("win-x64", "git", "cmd", "git.exe")
+            : Path.Join("linux-x64", "git", "git.sh");
 
         _maxParallelism = Math.Min(Environment.ProcessorCount, 8);
 
@@ -134,8 +143,11 @@ public sealed partial class GitUtil : IGitUtil
     public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
         CancellationToken cancellationToken = default)
     {
+        string gitBinaryPath = await _resourcesPathUtil.GetResourceFilePath(_gitBinaryRelativePath, cancellationToken)
+                                                       .NoSync();
+
         if (_logGitCommands && log)
-            _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", _gitBinaryPath, arguments, workingDirectory ?? "<null>");
+            _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", gitBinaryPath, arguments, workingDirectory ?? "<null>");
 
         Dictionary<string, string>? actualEnv = env;
 
@@ -158,7 +170,7 @@ public sealed partial class GitUtil : IGitUtil
             actualEnv[_gitTerminalPromptKey] = _gitTerminalPromptValue;
         }
 
-        return await _processUtil.Start(_gitBinaryPath, workingDirectory, arguments, environmentalVars: actualEnv, log: log, cancellationToken: cancellationToken)
+        return await _processUtil.Start(gitBinaryPath, workingDirectory, arguments, environmentalVars: actualEnv, log: log, cancellationToken: cancellationToken)
                                  .NoSync();
     }
 
