@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using AwesomeAssertions;
 using Soenneker.Tests.Attributes.Local;
@@ -25,7 +26,7 @@ public class GitUtilTests : HostedUnitTest
     { }
 
     [Test]
-    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repositories()
+    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repositories(CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         string repo = Path.Join(root, "repo");
@@ -36,7 +37,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init", repo);
             await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty");
 
-            List<string> result = await _util.GetAllDirtyRepositories(root);
+            List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
 
             result.Should()
                   .ContainSingle()
@@ -50,7 +51,7 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repository_when_directory_is_repo_root()
+    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repository_when_directory_is_repo_root(CancellationToken cancellationToken)
     {
         string repo = Directory.CreateTempSubdirectory().FullName;
 
@@ -59,7 +60,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init", repo);
             await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty");
 
-            List<string> result = await _util.GetAllDirtyRepositories(repo);
+            List<string> result = await _util.GetAllDirtyRepositories(repo, cancellationToken: cancellationToken);
 
             result.Should()
                   .ContainSingle()
@@ -73,7 +74,7 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetAllDirtyRepositories_should_return_repository_with_unpushed_commit()
+    public async ValueTask GetAllDirtyRepositories_should_return_repository_with_unpushed_commit(CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         string remote = Path.Join(root, "remote.git");
@@ -94,7 +95,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("add unpushed.txt", repo);
             await RunGit("commit -m unpushed", repo);
 
-            List<string> result = await _util.GetAllDirtyRepositories(root);
+            List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
 
             result.Should()
                   .Contain(repo);
@@ -106,7 +107,7 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask SwitchToRemoteBranch_should_not_discard_working_tree_changes()
+    public async ValueTask SwitchToRemoteBranch_should_not_discard_working_tree_changes(CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         string remote = Path.Join(root, "remote.git");
@@ -123,7 +124,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("push -u origin main", repo);
             await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "local change");
 
-            Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo);
+            Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo, cancellationToken: cancellationToken);
 
             await act.Should().ThrowAsync<InvalidOperationException>();
             (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"))).Should().Be("local change");
