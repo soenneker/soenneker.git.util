@@ -3,8 +3,7 @@ using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Polly;
-using Polly.Retry;
+using Kevlar;
 using Soenneker.Git.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
@@ -42,7 +41,7 @@ public sealed partial class GitUtil : IGitUtil
     private readonly IResourcesPathUtil _resourcesPathUtil;
 
     private readonly string _gitBinaryRelativePath;
-    private readonly AsyncRetryPolicy _retry429;
+    private readonly Shield _retry429;
 
     // Cache Authorization header per token to avoid base64 work every call
     private readonly ConcurrentDictionary<string, string> _authHeaderCache = new(StringComparer.Ordinal);
@@ -81,17 +80,23 @@ public sealed partial class GitUtil : IGitUtil
 
         _maxParallelism = Math.Min(Environment.ProcessorCount, 8);
 
-        _retry429 = Policy
-                    .Handle<InvalidOperationException>(static ex =>
+        _retry429 = Shield
+                    .When<InvalidOperationException>(static ex =>
                         ex.Message.Contains("429", StringComparison.OrdinalIgnoreCase) ||
                         ex.Message.Contains("Too Many Requests", StringComparison.OrdinalIgnoreCase) ||
                         ex.Message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
-                    .WaitAndRetryAsync(
-                        retryCount: 5,
-                        sleepDurationProvider: static attempt =>
-                            TimeSpan.FromSeconds(1 << attempt) + TimeSpan.FromMilliseconds(RandomUtil.Next(0, 500)),
-                        onRetry: (ex, ts, attempt, _) =>
-                            _logger.LogWarning("Git rate limit detected – retry #{Attempt} in {Delay:n1}s", attempt, ts.TotalSeconds));
+                    .Retry(options =>
+                    {
+                        options.MaxRetries = 5;
+                        options.Backoff = Backoff.Custom(static attempt =>
+                            TimeSpan.FromSeconds(1 << attempt) + TimeSpan.FromMilliseconds(RandomUtil.Next(0, 500)));
+                        options.OnRetry = retry =>
+                        {
+                            _logger.LogWarning("Git rate limit detected – retry #{Attempt} in {Delay:n1}s", retry.AttemptNumber + 1,
+                                retry.Delay.TotalSeconds);
+                            return default;
+                        };
+                    });
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -452,11 +457,11 @@ public sealed partial class GitUtil : IGitUtil
 
             const string pushCmd = "-c credential.helper= -c core.askPass= push origin HEAD";
 
-            await _retry429.ExecuteAsync(async () =>
+            await _retry429.ExecuteAsync(async token =>
                            {
-                               await Run(pushCmd, directory, env: env, log: false, cancellationToken: cancellationToken)
+                               await Run(pushCmd, directory, env: env, log: false, cancellationToken: token)
                                    .NoSync();
-                           })
+                           }, cancellationToken)
                            .NoSync();
 
             _logger.LogInformation("Successfully pushed to {Dir}", directory);
