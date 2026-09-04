@@ -25,6 +25,7 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Git.Util;
 
+/// <inheritdoc cref="IGitUtil" />
 public sealed partial class GitUtil : IGitUtil
 {
     private readonly string _configToken;
