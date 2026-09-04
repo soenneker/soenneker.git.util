@@ -107,6 +107,44 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
+    public async ValueTask GetAllDirtyRepositories_should_detect_behind_repository_but_not_clean_repository(CancellationToken cancellationToken)
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        string remote = Path.Join(root, "remote.git");
+        string repo = Path.Join(root, "repo");
+        string updater = Path.Join(root, "updater");
+
+        try
+        {
+            await RunGit("init --bare --initial-branch=main remote.git", root);
+            await RunGit($"clone \"{remote}\" repo", root);
+            await ConfigureGitUser(repo);
+            await File.WriteAllTextAsync(Path.Join(repo, "initial.txt"), "initial", cancellationToken);
+            await RunGit("add initial.txt", repo);
+            await RunGit("commit -m initial", repo);
+            await RunGit("push -u origin main", repo);
+
+            (await _util.GetAllDirtyRepositories(root, cancellationToken)).Should().BeEmpty();
+
+            await RunGit($"clone \"{remote}\" updater", root);
+            await ConfigureGitUser(updater);
+            await File.WriteAllTextAsync(Path.Join(updater, "update.txt"), "update", cancellationToken);
+            await RunGit("add update.txt", updater);
+            await RunGit("commit -m update", updater);
+            await RunGit("push", updater);
+            await RunGit("fetch", repo);
+
+            List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken);
+
+            result.Should().ContainSingle().Which.Should().Be(repo);
+        }
+        finally
+        {
+            DeleteDirectory(root);
+        }
+    }
+
+    [Test]
     public async ValueTask SwitchToRemoteBranch_should_not_discard_working_tree_changes(CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
@@ -128,6 +166,36 @@ public class GitUtilTests : HostedUnitTest
 
             await act.Should().ThrowAsync<InvalidOperationException>();
             (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"))).Should().Be("local change");
+        }
+        finally
+        {
+            DeleteDirectory(root);
+        }
+    }
+
+    [Test]
+    public async ValueTask GetAllGitRepositoriesRecursively_should_find_nested_and_linked_worktrees(CancellationToken cancellationToken)
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        string repo = Path.Join(root, "repo");
+        string nestedRepo = Path.Join(repo, "nested");
+        string linkedWorktree = Path.Join(root, "linked-worktree");
+        string notARepo = Path.Join(root, "not-a-repo");
+
+        Directory.CreateDirectory(nestedRepo);
+        Directory.CreateDirectory(linkedWorktree);
+        Directory.CreateDirectory(notARepo);
+
+        try
+        {
+            await RunGit("init", repo);
+            await RunGit("init", nestedRepo);
+            await File.WriteAllTextAsync(Path.Join(linkedWorktree, ".git"), "gitdir: ../repo/.git/worktrees/linked-worktree", cancellationToken);
+            await File.WriteAllTextAsync(Path.Join(notARepo, ".git"), "ordinary file", cancellationToken);
+
+            List<string> result = await _util.GetAllGitRepositoriesRecursively(root, cancellationToken);
+
+            result.Should().BeEquivalentTo([repo, nestedRepo, linkedWorktree]);
         }
         finally
         {

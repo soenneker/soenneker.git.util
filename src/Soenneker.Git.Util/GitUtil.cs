@@ -11,6 +11,7 @@ using Soenneker.Utils.Path.Abstract;
 using Soenneker.Utils.Process.Abstract;
 using Soenneker.Utils.Paths.Resources.Abstract;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -19,7 +20,6 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Soenneker.Extensions.String;
 using Soenneker.Utils.Random;
 using Soenneker.Utils.Runtime;
 
@@ -33,6 +33,10 @@ public sealed partial class GitUtil : IGitUtil
     private readonly string _configEmail;
     private readonly string _defaultBranch;
     private readonly bool _logGitCommands;
+    private readonly string _pullArguments;
+    private readonly string _mergeBaseArguments;
+    private readonly string _checkoutArguments;
+    private readonly Dictionary<string, string> _defaultCommitEnvironment;
 
     private readonly ILogger<GitUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
@@ -42,6 +46,8 @@ public sealed partial class GitUtil : IGitUtil
     private readonly IResourcesPathUtil _resourcesPathUtil;
 
     private readonly string _gitBinaryRelativePath;
+    private readonly SemaphoreSlim _gitBinaryPathLock = new(1, 1);
+    private string? _gitBinaryPath;
     private readonly Shield _retry429;
 
     // Cache Authorization header per token to avoid base64 work every call
@@ -51,6 +57,13 @@ public sealed partial class GitUtil : IGitUtil
 
     private const string _gitTerminalPromptKey = "GIT_TERMINAL_PROMPT";
     private const string _gitTerminalPromptValue = "0";
+
+    private static readonly Dictionary<string, string> _defaultGitEnvironment = new(1, StringComparer.Ordinal)
+    {
+        [_gitTerminalPromptKey] = _gitTerminalPromptValue
+    };
+
+    private readonly ConcurrentDictionary<string, Dictionary<string, string>> _authEnvironmentCache = new(StringComparer.Ordinal);
 
     public GitUtil(IConfiguration config, ILogger<GitUtil> logger, IDirectoryUtil directoryUtil, IProcessUtil processUtil, IPathUtil pathUtil,
         IFileUtil fileUtil)
@@ -74,6 +87,11 @@ public sealed partial class GitUtil : IGitUtil
         _configEmail = config.GetValueStrict<string>("Git:Email");
         _defaultBranch = config.GetValue<string>("Git:DefaultBranch") ?? "main";
         _logGitCommands = config.GetValue<bool>("Git:Log");
+
+        _pullArguments = $"pull origin {_defaultBranch}";
+        _mergeBaseArguments = $"merge-base --is-ancestor HEAD origin/{_defaultBranch}";
+        _checkoutArguments = $"checkout -B {_defaultBranch} origin/{_defaultBranch}";
+        _defaultCommitEnvironment = CreateCommitEnvironment(_configName, _configEmail);
 
         _gitBinaryRelativePath = RuntimeUtil.IsWindows()
             ? Path.Join("win-x64", "git", "cmd", "git.exe")
@@ -136,21 +154,33 @@ public sealed partial class GitUtil : IGitUtil
     {
         token ??= _configToken ?? throw new InvalidOperationException("A token is required but none was provided.");
 
-        return new Dictionary<string, string>(capacity: 5, StringComparer.Ordinal)
+        return _authEnvironmentCache.GetOrAdd(token, static (t, self) => new Dictionary<string, string>(capacity: 5, StringComparer.Ordinal)
         {
             [_gitTerminalPromptKey] = _gitTerminalPromptValue,
             ["GIT_CONFIG_COUNT"] = "1",
             ["GIT_CONFIG_KEY_0"] = "http.https://github.com/.extraheader",
-            ["GIT_CONFIG_VALUE_0"] = BuildAuthHeaderCached(token),
+            ["GIT_CONFIG_VALUE_0"] = self.BuildAuthHeaderCached(t),
             ["GIT_ASKPASS"] = ""
+        }, this);
+    }
+
+    private static Dictionary<string, string> CreateCommitEnvironment(string name, string email)
+    {
+        return new Dictionary<string, string>(capacity: 5, StringComparer.Ordinal)
+        {
+            ["GIT_AUTHOR_NAME"] = name,
+            ["GIT_AUTHOR_EMAIL"] = email,
+            ["GIT_COMMITTER_NAME"] = name,
+            ["GIT_COMMITTER_EMAIL"] = email,
+            [_gitTerminalPromptKey] = _gitTerminalPromptValue
         };
     }
 
     public async ValueTask<List<string>> Run(string arguments, string? workingDirectory = null, Dictionary<string, string>? env = null, bool log = true,
         CancellationToken cancellationToken = default)
     {
-        string gitBinaryPath = await _resourcesPathUtil.GetResourceFilePath(_gitBinaryRelativePath, cancellationToken)
-                                                       .NoSync();
+        string gitBinaryPath = await GetGitBinaryPath(cancellationToken)
+            .NoSync();
 
         if (_logGitCommands && log)
             _logger.LogInformation("[git] {GitBinary} {Arguments} (cwd: {Cwd})", gitBinaryPath, arguments, workingDirectory ?? "<null>");
@@ -158,12 +188,7 @@ public sealed partial class GitUtil : IGitUtil
         Dictionary<string, string>? actualEnv = env;
 
         if (env is null)
-        {
-            actualEnv = new Dictionary<string, string>(1)
-            {
-                [_gitTerminalPromptKey] = _gitTerminalPromptValue
-            };
-        }
+            actualEnv = _defaultGitEnvironment;
         else if (!env.ContainsKey(_gitTerminalPromptKey))
         {
             actualEnv = new Dictionary<string, string>(env.Count + 1, StringComparer.Ordinal);
@@ -180,15 +205,37 @@ public sealed partial class GitUtil : IGitUtil
                                  .NoSync();
     }
 
-    private async Task ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
+    private async ValueTask<string> GetGitBinaryPath(CancellationToken cancellationToken)
+    {
+        string? cached = Volatile.Read(ref _gitBinaryPath);
+        if (cached is not null)
+            return cached;
+
+        await _gitBinaryPathLock.WaitAsync(cancellationToken)
+                                .NoSync();
+
+        try
+        {
+            cached = _gitBinaryPath;
+            if (cached is not null)
+                return cached;
+
+            cached = await _resourcesPathUtil.GetResourceFilePath(_gitBinaryRelativePath, cancellationToken)
+                                                .NoSync();
+            Volatile.Write(ref _gitBinaryPath, cached);
+            return cached;
+        }
+        finally
+        {
+            _gitBinaryPathLock.Release();
+        }
+    }
+
+    private async ValueTask ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
     {
         if (parallel)
         {
-            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), async (repo, token) =>
-                          {
-                              await action(repo, token)
-                                  .NoSync();
-                          })
+            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), action)
                           .NoSync();
 
             return;
@@ -214,10 +261,10 @@ public sealed partial class GitUtil : IGitUtil
             if (await HasWorkingTreeChanges(directory, cancellationToken).NoSync())
                 throw new InvalidOperationException($"Refusing to switch {directory} because it contains working-tree changes.");
 
-            await Run($"merge-base --is-ancestor HEAD origin/{_defaultBranch}", directory, log: false, cancellationToken: cancellationToken)
+            await Run(_mergeBaseArguments, directory, log: false, cancellationToken: cancellationToken)
                 .NoSync();
 
-            await Run($"checkout -B {_defaultBranch} origin/{_defaultBranch}", directory, cancellationToken: cancellationToken)
+            await Run(_checkoutArguments, directory, cancellationToken: cancellationToken)
                 .NoSync();
 
             _logger.LogInformation("Switched {Dir} to remote branch '{Branch}'", directory, _defaultBranch);
@@ -231,52 +278,41 @@ public sealed partial class GitUtil : IGitUtil
 
     public async ValueTask<bool> IsRepositoryDirty(string directory, CancellationToken cancellationToken = default)
     {
-        if (await HasWorkingTreeChanges(directory, cancellationToken)
-                .NoSync())
-            return true;
-
-        return await HasRemoteDiverged(directory, cancellationToken)
-            .NoSync();
-    }
-
-    private async ValueTask<bool> HasRemoteDiverged(string directory, CancellationToken ct)
-    {
         try
         {
-            List<string> lines = await Run("-c safe.directory=* rev-list --left-right --count @{u}...HEAD", directory, log: false, cancellationToken: ct)
+            List<string> lines = await Run("-c safe.directory=* status --porcelain=v2 --branch", directory, log: false,
+                    cancellationToken: cancellationToken)
                 .NoSync();
 
-            if (lines.Count == 0)
-                return false;
+            foreach (string line in lines)
+            {
+                ReadOnlySpan<char> value = line.AsSpan();
+                if (value.IsEmpty)
+                    continue;
 
-            ReadOnlySpan<char> s = lines[0]
-                                   .AsSpan()
-                                   .Trim();
+                if (value[0] != '#')
+                    return true;
 
-            // common clean case: "0\t0" or "0 0"
-            if (IsZeroZero(s))
-                return false;
+                const string branchAheadBehindPrefix = "# branch.ab ";
+                if (!value.StartsWith(branchAheadBehindPrefix, StringComparison.Ordinal))
+                    continue;
 
-            int separator = s.IndexOfAny([' ', '\t']);
-            if (separator <= 0 || separator >= s.Length - 1)
-                return false;
+                ReadOnlySpan<char> aheadBehind = value[branchAheadBehindPrefix.Length..];
+                if (!aheadBehind.SequenceEqual("+0 -0"))
+                    return true;
+            }
 
-            ReadOnlySpan<char> left = s[..separator]
-                .Trim();
-            ReadOnlySpan<char> right = s[(separator + 1)..]
-                .Trim();
-
-            return !(left.SequenceEqual("0".AsSpan()) && right.SequenceEqual("0".AsSpan()));
-        }
-        catch
-        {
             return false;
         }
-    }
-
-    private static bool IsZeroZero(ReadOnlySpan<char> value)
-    {
-        return value.Length == 3 && value[0] == '0' && (value[1] == '\t' || value[1] == ' ') && value[2] == '0';
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not determine repository status for {Dir}", directory);
+            throw;
+        }
     }
 
     public async ValueTask<bool> IsRepository(string directory, CancellationToken cancellationToken = default)
@@ -351,7 +387,7 @@ public sealed partial class GitUtil : IGitUtil
         {
             Dictionary<string, string> env = GetAuthEnvCached(token);
 
-            await Run($"pull origin {_defaultBranch}", directory, env: env, cancellationToken: cancellationToken)
+            await Run(_pullArguments, directory, env: env, cancellationToken: cancellationToken)
                 .NoSync();
             _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
@@ -386,14 +422,10 @@ public sealed partial class GitUtil : IGitUtil
                 return false;
             }
 
-            var env = new Dictionary<string, string>(capacity: 5)
-            {
-                ["GIT_AUTHOR_NAME"] = name,
-                ["GIT_AUTHOR_EMAIL"] = email,
-                ["GIT_COMMITTER_NAME"] = name,
-                ["GIT_COMMITTER_EMAIL"] = email,
-                [_gitTerminalPromptKey] = _gitTerminalPromptValue
-            };
+            Dictionary<string, string> env = string.Equals(name, _configName, StringComparison.Ordinal) &&
+                                             string.Equals(email, _configEmail, StringComparison.Ordinal)
+                ? _defaultCommitEnvironment
+                : CreateCommitEnvironment(name, email);
 
             string msgFile = await _pathUtil.GetRandomTempFilePath(".tmp", cancellationToken)
                                             .NoSync();
@@ -520,97 +552,123 @@ public sealed partial class GitUtil : IGitUtil
         }
     }
 
-    public async ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default)
+    public ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Scanning for git repositories under {Root}", directory);
 
         var result = new List<string>();
-        HashSet<string>? seen = null;
 
-        await foreach (string repoRoot in EnumerateRepoRoots(directory, cancellationToken))
-        {
-            if (result.Count == 0)
-            {
-                result.Add(repoRoot);
-                continue;
-            }
-
-            seen ??= new HashSet<string>(result, StringComparer.OrdinalIgnoreCase);
-
-            if (seen.Add(repoRoot))
-                result.Add(repoRoot);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Recursively finds working-tree roots by looking for a valid <c>.git</c>
-    /// control directory *or* control file. False-positives are eliminated by a cheap HEAD / gitdir check.
-    /// </summary>
-    private async IAsyncEnumerable<string> EnumerateRepoRoots(string root, [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (root.IsNullOrWhiteSpace())
-            yield break;
-
-        if (!await _directoryUtil.Exists(root, cancellationToken)
-                                 .NoSync())
-            yield break;
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return ValueTask.FromResult(result);
 
         var opts = new EnumerationOptions
         {
-            RecurseSubdirectories = true,
-            AttributesToSkip = FileAttributes.ReparsePoint, // no loops
+            RecurseSubdirectories = false,
+            AttributesToSkip = FileAttributes.ReparsePoint,
             IgnoreInaccessible = true,
             MatchCasing = MatchCasing.CaseInsensitive
         };
 
-        var enumerable = new FileSystemEnumerable<string>(root, static (ref e) => e.ToFullPath(), opts)
-        {
-            ShouldIncludePredicate = static (ref e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
+        var pending = new Queue<string>();
+        pending.Enqueue(Path.GetFullPath(directory));
+        int partitionTarget = Math.Max(4, _maxParallelism * 4);
 
-            // Never descend into a .git dir itself – eliminates double hits
-            ShouldRecursePredicate = static (ref e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
-        };
-
-        foreach (string gitPath in enumerable)
+        // Split near the root first. Each remaining subtree can then be scanned independently without
+        // synchronizing for every directory or filesystem entry.
+        while (pending.Count > 0 && pending.Count < partitionTarget)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            string currentDirectory = pending.Dequeue();
 
-            if (!await LooksLikeValidGitControlPath(gitPath)
-                    .NoSync())
-                continue;
+            var entries = new FileSystemEnumerable<GitFileSystemEntry>(currentDirectory,
+                static (ref FileSystemEntry e) => new GitFileSystemEntry(e.ToFullPath(), e.IsDirectory,
+                    e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)), opts)
+            {
+                // Do not allocate paths for ordinary files. We only need child directories and .git control files.
+                ShouldIncludePredicate = static (ref FileSystemEntry e) =>
+                    e.IsDirectory || e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
+            };
 
-            string? repoRoot = Path.GetDirectoryName(gitPath);
+            bool foundRepository = false;
 
-            if (repoRoot.HasContent())
-                yield return repoRoot;
+            foreach (GitFileSystemEntry entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (entry.IsGitControlPath)
+                {
+                    // A .git directory is repository metadata, never another search root.
+                    if (!foundRepository && LooksLikeValidGitControlPath(entry.Path, entry.IsDirectory))
+                    {
+                        result.Add(currentDirectory);
+                        foundRepository = true;
+                    }
+
+                    continue;
+                }
+
+                pending.Enqueue(entry.Path);
+            }
         }
+
+        if (pending.Count == 0)
+            return ValueTask.FromResult(result);
+
+        var recursiveOpts = new EnumerationOptions
+        {
+            RecurseSubdirectories = true,
+            AttributesToSkip = FileAttributes.ReparsePoint,
+            IgnoreInaccessible = true,
+            MatchCasing = MatchCasing.CaseInsensitive
+        };
+        var discovered = new ConcurrentQueue<string>();
+
+        Parallel.ForEach(pending, CreateParallelOptions(cancellationToken), seed =>
+        {
+            var entries = new FileSystemEnumerable<GitFileSystemEntry>(seed,
+                static (ref FileSystemEntry e) => new GitFileSystemEntry(e.ToFullPath(), e.IsDirectory,
+                    e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)), recursiveOpts)
+            {
+                ShouldIncludePredicate = static (ref FileSystemEntry e) => e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase),
+                ShouldRecursePredicate = static (ref FileSystemEntry e) => !e.FileName.Equals(".git", StringComparison.OrdinalIgnoreCase)
+            };
+
+            foreach (GitFileSystemEntry entry in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (LooksLikeValidGitControlPath(entry.Path, entry.IsDirectory))
+                    discovered.Enqueue(Path.GetDirectoryName(entry.Path)!);
+            }
+        });
+
+        if (!discovered.IsEmpty)
+        {
+            var seen = new HashSet<string>(result, StringComparer.OrdinalIgnoreCase);
+
+            while (discovered.TryDequeue(out string? repoRoot))
+            {
+                if (seen.Add(repoRoot))
+                    result.Add(repoRoot);
+            }
+        }
+
+        return ValueTask.FromResult(result);
     }
 
-    private async ValueTask<bool> LooksLikeValidGitControlPath(string gitPath)
+    private static bool LooksLikeValidGitControlPath(string gitPath, bool isDirectory)
     {
-        // .git directory -> must contain HEAD file
-        if (await _directoryUtil.Exists(gitPath)
-                                .NoSync())
-            return await _fileUtil.Exists(Path.Join(gitPath, "HEAD"))
-                                  .NoSync();
-
-        // .git file -> must start with "gitdir:" line (worktrees/submodules)
-        if (!await _fileUtil.Exists(gitPath)
-                            .NoSync())
-            return false;
+        if (isDirectory)
+            return File.Exists(Path.Join(gitPath, "HEAD"));
 
         try
         {
-            await using var fs = new FileStream(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, bufferSize: 64, FileOptions.SequentialScan);
-
-            Span<byte> buf = stackalloc byte[7]; // "gitdir:"
-            int read = fs.Read(buf);
+            Span<byte> buf = stackalloc byte[7];
+            using var handle = File.OpenHandle(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            int read = RandomAccess.Read(handle, buf, 0);
             if (read < 7)
                 return false;
 
-            // ASCII compare, case-insensitive for letters
             return (buf[0] | 0x20) == (byte)'g' && (buf[1] | 0x20) == (byte)'i' && (buf[2] | 0x20) == (byte)'t' && (buf[3] | 0x20) == (byte)'d' &&
                    (buf[4] | 0x20) == (byte)'i' && (buf[5] | 0x20) == (byte)'r' && buf[6] == (byte)':';
         }
@@ -620,6 +678,8 @@ public sealed partial class GitUtil : IGitUtil
         }
     }
 
+    private readonly record struct GitFileSystemEntry(string Path, bool IsDirectory, bool IsGitControlPath);
+
     public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
     {
         List<string> repos = await GetAllGitRepositoriesRecursively(directory, cancellationToken)
@@ -627,17 +687,32 @@ public sealed partial class GitUtil : IGitUtil
         if (repos.Count == 0)
             return [];
 
-        var dirty = new ConcurrentQueue<string>();
+        bool[] dirty = ArrayPool<bool>.Shared.Rent(repos.Count);
+        Array.Clear(dirty, 0, repos.Count);
 
-        await Parallel.ForEachAsync(repos, CreateParallelOptions(cancellationToken), async (repo, ct) =>
-                      {
-                          if (await IsRepositoryDirty(repo, ct)
-                                  .NoSync())
-                              dirty.Enqueue(repo);
-                      })
-                      .NoSync();
+        try
+        {
+            await Parallel.ForAsync(0, repos.Count, CreateParallelOptions(cancellationToken), async (index, ct) =>
+                          {
+                              dirty[index] = await IsRepositoryDirty(repos[index], ct)
+                                  .NoSync();
+                          })
+                          .NoSync();
 
-        return [.. dirty];
+            var result = new List<string>();
+
+            for (var i = 0; i < repos.Count; i++)
+            {
+                if (dirty[i])
+                    result.Add(repos[i]);
+            }
+
+            return result;
+        }
+        finally
+        {
+            ArrayPool<bool>.Shared.Return(dirty, clearArray: true);
+        }
     }
 
     public async ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
