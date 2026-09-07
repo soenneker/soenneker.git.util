@@ -17,7 +17,7 @@ public interface IGitUtil
     /// <param name="root">Root directory or repository to process.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop scheduling additional repositories. Pulls already in progress are allowed to finish so Git can clean up its lock files.</param>
     /// <returns>A task that completes when the pull all git repositories operation is complete.</returns>
     ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -27,7 +27,7 @@ public interface IGitUtil
     /// <param name="root">Root directory or repository to process.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the fetch all git repositories operation is complete.</returns>
     ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -36,7 +36,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes after the targeted files have been deleted.</returns>
     ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -45,7 +45,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the repack indexes for all repositories operation is complete.</returns>
     ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -54,7 +54,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the garbage collect all repositories operation is complete.</returns>
     ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -64,7 +64,7 @@ public interface IGitUtil
     /// <param name="root">Root directory or repository to process.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the garbage collect all repositories or reclone operation is complete.</returns>
     ValueTask GarbageCollectAllRepositoriesOrReclone(string root, string? token = null, bool parallel = false,
         CancellationToken cancellationToken = default);
@@ -74,7 +74,7 @@ public interface IGitUtil
     /// </summary>
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the integrity check all repositories operation is complete.</returns>
     ValueTask IntegrityCheckAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -84,7 +84,7 @@ public interface IGitUtil
     /// <param name="root">Root directory or repository to process.</param>
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the switch all git repositories to remote branch operation is complete.</returns>
     ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -95,7 +95,7 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="commitMessage">Commit message to use.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the commit all repositories operation is complete.</returns>
     ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -105,7 +105,7 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="token">Personal access token used for authentication.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the push all repositories operation is complete.</returns>
     ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 
@@ -116,7 +116,7 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="token">Personal access token used for authentication.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
     /// <returns>A task that completes when the pull and push all repositories operation is complete.</returns>
     ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
 

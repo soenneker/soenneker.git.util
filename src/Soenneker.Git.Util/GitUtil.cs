@@ -233,9 +233,11 @@ public sealed partial class GitUtil : IGitUtil
 
     private async ValueTask ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
     {
+        // Use cancellation to stop discovery/scheduling, but never force-cancel an operation after it
+        // starts mutating a repository. Abruptly killing Git can strand index, ref, pack, or GC locks.
         if (parallel)
         {
-            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), action)
+            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), (repo, _) => action(repo, CancellationToken.None))
                           .NoSync();
 
             return;
@@ -244,7 +246,7 @@ public sealed partial class GitUtil : IGitUtil
         foreach (string repo in repos)
         {
             ct.ThrowIfCancellationRequested();
-            await action(repo, ct)
+            await action(repo, CancellationToken.None)
                 .NoSync();
         }
     }
@@ -280,7 +282,7 @@ public sealed partial class GitUtil : IGitUtil
     {
         try
         {
-            List<string> lines = await Run("-c safe.directory=* status --porcelain=v2 --branch", directory, log: false,
+            List<string> lines = await Run("--no-optional-locks -c safe.directory=* status --porcelain=v2 --branch", directory, log: false,
                     cancellationToken: cancellationToken)
                 .NoSync();
 
