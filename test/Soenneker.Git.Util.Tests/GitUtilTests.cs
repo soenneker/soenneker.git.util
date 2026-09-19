@@ -35,7 +35,7 @@ public class GitUtilTests : HostedUnitTest
         try
         {
             await RunGit("init", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty");
+            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
 
@@ -58,7 +58,7 @@ public class GitUtilTests : HostedUnitTest
         try
         {
             await RunGit("init", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty");
+            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(repo, cancellationToken: cancellationToken);
 
@@ -86,12 +86,12 @@ public class GitUtilTests : HostedUnitTest
             await RunGit($"clone \"{remote}\" repo", root);
             await ConfigureGitUser(repo);
 
-            await File.WriteAllTextAsync(Path.Join(repo, "pushed.txt"), "pushed");
+            await File.WriteAllTextAsync(Path.Join(repo, "pushed.txt"), "pushed", cancellationToken);
             await RunGit("add pushed.txt", repo);
             await RunGit("commit -m pushed", repo);
             await RunGit("push -u origin HEAD", repo);
 
-            await File.WriteAllTextAsync(Path.Join(repo, "unpushed.txt"), "unpushed");
+            await File.WriteAllTextAsync(Path.Join(repo, "unpushed.txt"), "unpushed", cancellationToken);
             await RunGit("add unpushed.txt", repo);
             await RunGit("commit -m unpushed", repo);
 
@@ -156,16 +156,16 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init --bare --initial-branch=main remote.git", root);
             await RunGit($"clone \"{remote}\" repo", root);
             await ConfigureGitUser(repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "committed");
+            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "committed", cancellationToken);
             await RunGit("add tracked.txt", repo);
             await RunGit("commit -m initial", repo);
             await RunGit("push -u origin main", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "local change");
+            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "local change", cancellationToken);
 
             Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo, cancellationToken: cancellationToken);
 
             await act.Should().ThrowAsync<InvalidOperationException>();
-            (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"))).Should().Be("local change");
+            (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"), cancellationToken)).Should().Be("local change");
         }
         finally
         {
@@ -232,7 +232,7 @@ public class GitUtilTests : HostedUnitTest
 
     private static async ValueTask RunGit(string arguments, string workingDirectory)
     {
-        using var process = Process.Start(new ProcessStartInfo("git", arguments)
+        using Process process = Process.Start(new ProcessStartInfo("git", arguments)
         {
             WorkingDirectory = workingDirectory,
             RedirectStandardError = true,

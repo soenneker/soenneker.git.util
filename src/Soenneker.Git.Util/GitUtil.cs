@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using Soenneker.Utils.Random;
 using Soenneker.Utils.Runtime;
 
@@ -300,7 +301,7 @@ public sealed partial class GitUtil : IGitUtil
                     continue;
 
                 ReadOnlySpan<char> aheadBehind = value[branchAheadBehindPrefix.Length..];
-                if (!aheadBehind.SequenceEqual("+0 -0"))
+                if (aheadBehind is not "+0 -0")
                     return true;
             }
 
@@ -666,7 +667,7 @@ public sealed partial class GitUtil : IGitUtil
         try
         {
             Span<byte> buf = stackalloc byte[7];
-            using var handle = File.OpenHandle(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using SafeFileHandle handle = File.OpenHandle(gitPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
             int read = RandomAccess.Read(handle, buf, 0);
             if (read < 7)
                 return false;
