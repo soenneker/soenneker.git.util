@@ -12,6 +12,20 @@ namespace Soenneker.Git.Util.Abstract;
 public interface IGitUtil
 {
     /// <summary>
+    /// Removes stale index.lock files from repositories beneath the specified root.
+    /// </summary>
+    /// <remarks>
+    /// Index locks are considered regardless of age. Cleanup is skipped while a Git process is running
+    /// or process inspection fails. Run while other Git clients are idle;
+    /// process detection is a best-effort safeguard and cannot prevent another client from starting.
+    /// Repository contents and other lock files are left untouched.
+    /// </remarks>
+    /// <param name="root">Root directory or repository to process.</param>
+    /// <param name="cancellationToken">Token used to stop discovery and cleanup.</param>
+    /// <returns>The number of stale index locks removed.</returns>
+    ValueTask<int> DeleteStaleIndexLocksForAllRepositories(string root, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Pulls all Git Repositories.
     /// </summary>
     /// <param name="root">Root directory or repository to process.</param>
