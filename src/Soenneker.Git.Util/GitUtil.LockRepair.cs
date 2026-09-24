@@ -29,7 +29,7 @@ public sealed partial class GitUtil
                     throw new InvalidOperationException("Git did not return an absolute index lock path.");
 
                 string path = output[0];
-                if (!File.Exists(path))
+                if (!(await _fileUtil.Exists(path)))
                     continue;
 
                 if (HasRunningGitProcess())

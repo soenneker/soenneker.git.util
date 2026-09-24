@@ -1,3 +1,4 @@
+using Soenneker.Utils.File.Abstract;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -14,10 +15,13 @@ namespace Soenneker.Git.Util.Tests;
 [ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
 public class GitUtilTests : HostedUnitTest
 {
+    private readonly IFileUtil _fileUtil;
+
     private readonly IGitUtil _util;
 
     public GitUtilTests(Host host) : base(host)
     {
+        _fileUtil = Resolve<IFileUtil>(true);
         _util = Resolve<IGitUtil>(true);
     }
 
@@ -35,7 +39,7 @@ public class GitUtilTests : HostedUnitTest
         try
         {
             await RunGit("init", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
 
@@ -58,7 +62,7 @@ public class GitUtilTests : HostedUnitTest
         try
         {
             await RunGit("init", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(repo, cancellationToken: cancellationToken);
 
@@ -86,12 +90,12 @@ public class GitUtilTests : HostedUnitTest
             await RunGit($"clone \"{remote}\" repo", root);
             await ConfigureGitUser(repo);
 
-            await File.WriteAllTextAsync(Path.Join(repo, "pushed.txt"), "pushed", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "pushed.txt"), "pushed", cancellationToken: cancellationToken);
             await RunGit("add pushed.txt", repo);
             await RunGit("commit -m pushed", repo);
             await RunGit("push -u origin HEAD", repo);
 
-            await File.WriteAllTextAsync(Path.Join(repo, "unpushed.txt"), "unpushed", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "unpushed.txt"), "unpushed", cancellationToken: cancellationToken);
             await RunGit("add unpushed.txt", repo);
             await RunGit("commit -m unpushed", repo);
 
@@ -119,7 +123,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init --bare --initial-branch=main remote.git", root);
             await RunGit($"clone \"{remote}\" repo", root);
             await ConfigureGitUser(repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "initial.txt"), "initial", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "initial.txt"), "initial", cancellationToken: cancellationToken);
             await RunGit("add initial.txt", repo);
             await RunGit("commit -m initial", repo);
             await RunGit("push -u origin main", repo);
@@ -128,7 +132,7 @@ public class GitUtilTests : HostedUnitTest
 
             await RunGit($"clone \"{remote}\" updater", root);
             await ConfigureGitUser(updater);
-            await File.WriteAllTextAsync(Path.Join(updater, "update.txt"), "update", cancellationToken);
+            await _fileUtil.Write(Path.Join(updater, "update.txt"), "update", cancellationToken: cancellationToken);
             await RunGit("add update.txt", updater);
             await RunGit("commit -m update", updater);
             await RunGit("push", updater);
@@ -156,16 +160,16 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init --bare --initial-branch=main remote.git", root);
             await RunGit($"clone \"{remote}\" repo", root);
             await ConfigureGitUser(repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "committed", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "tracked.txt"), "committed", cancellationToken: cancellationToken);
             await RunGit("add tracked.txt", repo);
             await RunGit("commit -m initial", repo);
             await RunGit("push -u origin main", repo);
-            await File.WriteAllTextAsync(Path.Join(repo, "tracked.txt"), "local change", cancellationToken);
+            await _fileUtil.Write(Path.Join(repo, "tracked.txt"), "local change", cancellationToken: cancellationToken);
 
             Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo, cancellationToken: cancellationToken);
 
             await act.Should().ThrowAsync<InvalidOperationException>();
-            (await File.ReadAllTextAsync(Path.Join(repo, "tracked.txt"), cancellationToken)).Should().Be("local change");
+            (await _fileUtil.Read(Path.Join(repo, "tracked.txt"), cancellationToken: cancellationToken)).Should().Be("local change");
         }
         finally
         {
@@ -190,8 +194,8 @@ public class GitUtilTests : HostedUnitTest
         {
             await RunGit("init", repo);
             await RunGit("init", nestedRepo);
-            await File.WriteAllTextAsync(Path.Join(linkedWorktree, ".git"), "gitdir: ../repo/.git/worktrees/linked-worktree", cancellationToken);
-            await File.WriteAllTextAsync(Path.Join(notARepo, ".git"), "ordinary file", cancellationToken);
+            await _fileUtil.Write(Path.Join(linkedWorktree, ".git"), "gitdir: ../repo/.git/worktrees/linked-worktree", cancellationToken: cancellationToken);
+            await _fileUtil.Write(Path.Join(notARepo, ".git"), "ordinary file", cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllGitRepositoriesRecursively(root, cancellationToken);
 
@@ -251,7 +255,7 @@ public class GitUtilTests : HostedUnitTest
         await RunGit("config user.email example@example.com", workingDirectory);
     }
 
-    private static void DeleteDirectory(string path)
+    private async Task DeleteDirectory(string path)
     {
         if (!Directory.Exists(path))
             return;

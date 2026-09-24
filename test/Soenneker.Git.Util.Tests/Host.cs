@@ -1,3 +1,4 @@
+using Soenneker.Utils.File.Registrars;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,6 +21,7 @@ public class Host : UnitTestHost
 
     private static void SetupIoC(IServiceCollection services)
     {
+        services.AddFileUtilAsSingleton();
         services.AddLogging(builder =>
         {
             builder.ClearProviders();
