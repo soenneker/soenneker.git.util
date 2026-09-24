@@ -50,7 +50,7 @@
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2283" />
         <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1567" />
-        <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="4.0.265" />
+        <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="4.0.266" />
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.124" />
