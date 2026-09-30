@@ -336,13 +336,4 @@ public interface IGitUtil
     ValueTask CommitAndPush(string directory, string message, string token, string? name = null, string? email = null,
         CancellationToken cancellationToken = default);
 
-    /// <summary>
-    /// Adds source schema versions and SHA256 fingerprints to an update commit message.
-    /// </summary>
-    /// <param name="directory">Repository containing the source schemas.</param>
-    /// <param name="message">Descriptive update subject.</param>
-    /// <param name="cancellationToken">Token that propagates cancellation.</param>
-    /// <returns>The subject with source versions and a body identifying each source fingerprint.</returns>
-    ValueTask<string> GetUpdateCommitMessage(string directory, string message, CancellationToken cancellationToken = default);
-
 }

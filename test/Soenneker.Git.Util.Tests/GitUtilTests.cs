@@ -26,48 +26,6 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetUpdateCommitMessage_includes_schema_version_and_fingerprint(CancellationToken cancellationToken)
-    {
-        string directory = Directory.CreateTempSubdirectory().FullName;
-        const string schema = "{\"info\":{\"version\":\"2.56.0\"}}";
-        try
-        {
-            await File.WriteAllTextAsync(Path.Join(directory, "openapi.json"), schema, cancellationToken);
-            string message = await _util.GetUpdateCommitMessage(directory, "Update client", cancellationToken);
-            string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(schema))).ToLowerInvariant();
-            message.Should().Be($"Update client (2.56.0)\n\nopenapi.json: SHA256 {hash}");
-        }
-        finally { await DeleteDirectory(directory); }
-    }
-
-    [Test]
-    public async ValueTask GetUpdateCommitMessage_fingerprints_unversioned_and_malformed_schemas(CancellationToken cancellationToken)
-    {
-        string directory = Directory.CreateTempSubdirectory().FullName;
-        try
-        {
-            await File.WriteAllTextAsync(Path.Join(directory, "graphql.schema"), "type Query { ping: String }", cancellationToken);
-            await File.WriteAllTextAsync(Path.Join(directory, "openapi.json"), "invalid json", cancellationToken);
-            string message = await _util.GetUpdateCommitMessage(directory, "Update client", cancellationToken);
-            message.Should().StartWith("Update client\n\n");
-            message.Should().Contain("graphql.schema: SHA256 ").And.Contain("openapi.json: SHA256 ");
-        }
-        finally { await DeleteDirectory(directory); }
-    }
-
-    [Test]
-    public async ValueTask GetUpdateCommitMessage_preserves_subject_without_sources(CancellationToken cancellationToken)
-    {
-        string directory = Directory.CreateTempSubdirectory().FullName;
-        try
-        {
-            await File.WriteAllTextAsync(Path.Join(directory, "appsettings.json"), "{}", cancellationToken);
-            (await _util.GetUpdateCommitMessage(directory, "Update client", cancellationToken)).Should().Be("Update client");
-        }
-        finally { await DeleteDirectory(directory); }
-    }
-
-    [Test]
     public void Default()
     { }
 
