@@ -38,7 +38,7 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init", repo);
+            await RunGit("init", repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
@@ -61,7 +61,7 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init", repo);
+            await RunGit("init", repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(repo, cancellationToken: cancellationToken);
@@ -86,18 +86,18 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init --bare remote.git", root);
-            await RunGit($"clone \"{remote}\" repo", root);
-            await ConfigureGitUser(repo);
+            await RunGit("init --bare remote.git", root, cancellationToken: cancellationToken);
+            await RunGit($"clone \"{remote}\" repo", root, cancellationToken: cancellationToken);
+            await ConfigureGitUser(repo, cancellationToken: cancellationToken);
 
             await _fileUtil.Write(Path.Join(repo, "pushed.txt"), "pushed", cancellationToken: cancellationToken);
-            await RunGit("add pushed.txt", repo);
-            await RunGit("commit -m pushed", repo);
-            await RunGit("push -u origin HEAD", repo);
+            await RunGit("add pushed.txt", repo, cancellationToken: cancellationToken);
+            await RunGit("commit -m pushed", repo, cancellationToken: cancellationToken);
+            await RunGit("push -u origin HEAD", repo, cancellationToken: cancellationToken);
 
             await _fileUtil.Write(Path.Join(repo, "unpushed.txt"), "unpushed", cancellationToken: cancellationToken);
-            await RunGit("add unpushed.txt", repo);
-            await RunGit("commit -m unpushed", repo);
+            await RunGit("add unpushed.txt", repo, cancellationToken: cancellationToken);
+            await RunGit("commit -m unpushed", repo, cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
 
@@ -120,23 +120,23 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init --bare --initial-branch=main remote.git", root);
-            await RunGit($"clone \"{remote}\" repo", root);
-            await ConfigureGitUser(repo);
+            await RunGit("init --bare --initial-branch=main remote.git", root, cancellationToken: cancellationToken);
+            await RunGit($"clone \"{remote}\" repo", root, cancellationToken: cancellationToken);
+            await ConfigureGitUser(repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "initial.txt"), "initial", cancellationToken: cancellationToken);
-            await RunGit("add initial.txt", repo);
-            await RunGit("commit -m initial", repo);
-            await RunGit("push -u origin main", repo);
+            await RunGit("add initial.txt", repo, cancellationToken: cancellationToken);
+            await RunGit("commit -m initial", repo, cancellationToken: cancellationToken);
+            await RunGit("push -u origin main", repo, cancellationToken: cancellationToken);
 
             (await _util.GetAllDirtyRepositories(root, cancellationToken)).Should().BeEmpty();
 
-            await RunGit($"clone \"{remote}\" updater", root);
-            await ConfigureGitUser(updater);
+            await RunGit($"clone \"{remote}\" updater", root, cancellationToken: cancellationToken);
+            await ConfigureGitUser(updater, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(updater, "update.txt"), "update", cancellationToken: cancellationToken);
-            await RunGit("add update.txt", updater);
-            await RunGit("commit -m update", updater);
-            await RunGit("push", updater);
-            await RunGit("fetch", repo);
+            await RunGit("add update.txt", updater, cancellationToken: cancellationToken);
+            await RunGit("commit -m update", updater, cancellationToken: cancellationToken);
+            await RunGit("push", updater, cancellationToken: cancellationToken);
+            await RunGit("fetch", repo, cancellationToken: cancellationToken);
 
             List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken);
 
@@ -157,13 +157,13 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init --bare --initial-branch=main remote.git", root);
-            await RunGit($"clone \"{remote}\" repo", root);
-            await ConfigureGitUser(repo);
+            await RunGit("init --bare --initial-branch=main remote.git", root, cancellationToken: cancellationToken);
+            await RunGit($"clone \"{remote}\" repo", root, cancellationToken: cancellationToken);
+            await ConfigureGitUser(repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "tracked.txt"), "committed", cancellationToken: cancellationToken);
-            await RunGit("add tracked.txt", repo);
-            await RunGit("commit -m initial", repo);
-            await RunGit("push -u origin main", repo);
+            await RunGit("add tracked.txt", repo, cancellationToken: cancellationToken);
+            await RunGit("commit -m initial", repo, cancellationToken: cancellationToken);
+            await RunGit("push -u origin main", repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "tracked.txt"), "local change", cancellationToken: cancellationToken);
 
             Func<Task> act = async () => await _util.SwitchToRemoteBranch(repo, cancellationToken: cancellationToken);
@@ -192,8 +192,8 @@ public class GitUtilTests : HostedUnitTest
 
         try
         {
-            await RunGit("init", repo);
-            await RunGit("init", nestedRepo);
+            await RunGit("init", repo, cancellationToken: cancellationToken);
+            await RunGit("init", nestedRepo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(linkedWorktree, ".git"), "gitdir: ../repo/.git/worktrees/linked-worktree", cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(notARepo, ".git"), "ordinary file", cancellationToken: cancellationToken);
 
@@ -234,7 +234,7 @@ public class GitUtilTests : HostedUnitTest
         await _util.Pull(@"");
     }
 
-    private static async ValueTask RunGit(string arguments, string workingDirectory)
+    private static async ValueTask RunGit(string arguments, string workingDirectory, CancellationToken cancellationToken = default)
     {
         using Process process = Process.Start(new ProcessStartInfo("git", arguments)
         {
@@ -243,16 +243,16 @@ public class GitUtilTests : HostedUnitTest
             RedirectStandardOutput = true
         })!;
 
-        await process.WaitForExitAsync();
+        await process.WaitForExitAsync(cancellationToken: cancellationToken);
 
         if (process.ExitCode != 0)
-            throw new IOException(await process.StandardError.ReadToEndAsync());
+            throw new IOException(await process.StandardError.ReadToEndAsync(cancellationToken: cancellationToken));
     }
 
-    private static async ValueTask ConfigureGitUser(string workingDirectory)
+    private static async ValueTask ConfigureGitUser(string workingDirectory, CancellationToken cancellationToken = default)
     {
-        await RunGit("config user.name Test", workingDirectory);
-        await RunGit("config user.email example@example.com", workingDirectory);
+        await RunGit("config user.name Test", workingDirectory, cancellationToken: cancellationToken);
+        await RunGit("config user.email example@example.com", workingDirectory, cancellationToken: cancellationToken);
     }
 
     private async Task DeleteDirectory(string path)
