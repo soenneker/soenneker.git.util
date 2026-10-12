@@ -32,8 +32,10 @@ public interface IGitUtil
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop scheduling additional repositories. Pulls already in progress are allowed to finish so Git can clean up its lock files.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the pull all git repositories operation is complete.</returns>
-    ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask PullAllGitRepositories(string root, string? token = null, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Fetches all Git Repositories.
@@ -42,8 +44,10 @@ public interface IGitUtil
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the fetch all git repositories operation is complete.</returns>
-    ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask FetchAllGitRepositories(string root, string? token = null, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Deletes the Git multi-pack-index file for every repository discovered beneath <paramref name="root"/>.
@@ -51,8 +55,10 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes after the targeted files have been deleted.</returns>
-    ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask DeleteMultiPackIndexesForAllRepositories(string root, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Rebuilds the Git multi-pack-index for every repository discovered beneath <paramref name="root"/>.
@@ -60,8 +66,10 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the repack indexes for all repositories operation is complete.</returns>
-    ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask RepackIndexesForAllRepositories(string root, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Runs Git garbage collection for every repository discovered beneath <paramref name="root"/>.
@@ -69,8 +77,10 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the garbage collect all repositories operation is complete.</returns>
-    ValueTask GarbageCollectAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask GarbageCollectAllRepositories(string root, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Garbage-collects all Repositories Or Reclone.
@@ -79,9 +89,10 @@ public interface IGitUtil
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the garbage collect all repositories or reclone operation is complete.</returns>
     ValueTask GarbageCollectAllRepositoriesOrReclone(string root, string? token = null, bool parallel = false,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Runs a full Git integrity check for every repository discovered beneath <paramref name="root"/>.
@@ -89,8 +100,10 @@ public interface IGitUtil
     /// <param name="root">Root directory to scan for repositories.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the integrity check all repositories operation is complete.</returns>
-    ValueTask IntegrityCheckAllRepositories(string root, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask IntegrityCheckAllRepositories(string root, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Synchronizes every discovered repository to the configured remote branch when doing so cannot discard local work.
@@ -99,8 +112,10 @@ public interface IGitUtil
     /// <param name="token">Arbitrary utility token to append.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the switch all git repositories to remote branch operation is complete.</returns>
-    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask SwitchAllGitRepositoriesToRemoteBranch(string root, string? token = null, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Commits all repositories discovered beneath <paramref name="root"/>
@@ -110,8 +125,10 @@ public interface IGitUtil
     /// <param name="commitMessage">Commit message to use.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the commit all repositories operation is complete.</returns>
-    ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask CommitAllRepositories(string root, string commitMessage, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Pushes every Git repository discovered beneath <paramref name="root"/>.
@@ -120,8 +137,10 @@ public interface IGitUtil
     /// <param name="token">Personal access token used for authentication.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the push all repositories operation is complete.</returns>
-    ValueTask PushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask PushAllRepositories(string root, string token, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// For every Git repository discovered beneath <paramref name="root"/>,
@@ -131,8 +150,10 @@ public interface IGitUtil
     /// <param name="token">Personal access token used for authentication.</param>
     /// <param name="parallel">Whether repository operations should be performed in parallel.</param>
     /// <param name="cancellationToken">Token used to stop repository discovery and prevent additional operations from starting. Operations already in progress are allowed to finish.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution. Repository operations remain sequential when parallel is false.</param>
     /// <returns>A task that completes when the pull and push all repositories operation is complete.</returns>
-    ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false, CancellationToken cancellationToken = default);
+    ValueTask PullAndPushAllRepositories(string root, string token, bool parallel = false,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Fetches the configured remote branch and checks it out when the working tree is clean and local <c>HEAD</c> is its ancestor.
@@ -311,8 +332,10 @@ public interface IGitUtil
     /// </summary>
     /// <param name="directory">Root directory to scan.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution.</param>
     /// <returns>Discovered repository root paths.</returns>
-    ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory,
+        CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Returns the subset of Git repositories under <paramref name="directory"/>
@@ -320,8 +343,9 @@ public interface IGitUtil
     /// </summary>
     /// <param name="directory">Root directory to scan.</param>
     /// <param name="cancellationToken">Token that propagates cancellation.</param>
+    /// <param name="maxParallelism">Maximum concurrent workers per phase of this invocation. Must be positive; null uses the smaller of the processor count and eight. Use one for sequential execution.</param>
     /// <returns>Repository root paths with working-tree changes or upstream divergence.</returns>
-    ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default, int? maxParallelism = null);
 
     /// <summary>
     /// Commits local changes, if present, and then pushes the repository.

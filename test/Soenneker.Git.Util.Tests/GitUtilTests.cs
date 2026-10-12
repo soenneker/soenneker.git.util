@@ -30,7 +30,9 @@ public class GitUtilTests : HostedUnitTest
     { }
 
     [Test]
-    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repositories(CancellationToken cancellationToken)
+    [Arguments(1)]
+    [Arguments(16)]
+    public async ValueTask GetAllDirtyRepositories_should_return_dirty_repositories(int maxParallelism, CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         string repo = Path.Join(root, "repo");
@@ -41,7 +43,7 @@ public class GitUtilTests : HostedUnitTest
             await RunGit("init", repo, cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(repo, "dirty.txt"), "dirty", cancellationToken: cancellationToken);
 
-            List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken);
+            List<string> result = await _util.GetAllDirtyRepositories(root, cancellationToken: cancellationToken, maxParallelism: maxParallelism);
 
             result.Should()
                   .ContainSingle()
@@ -178,7 +180,9 @@ public class GitUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetAllGitRepositoriesRecursively_should_find_nested_and_linked_worktrees(CancellationToken cancellationToken)
+    [Arguments(1)]
+    [Arguments(16)]
+    public async ValueTask GetAllGitRepositoriesRecursively_should_find_nested_and_linked_worktrees(int maxParallelism, CancellationToken cancellationToken)
     {
         string root = Directory.CreateTempSubdirectory().FullName;
         string repo = Path.Join(root, "repo");
@@ -197,7 +201,7 @@ public class GitUtilTests : HostedUnitTest
             await _fileUtil.Write(Path.Join(linkedWorktree, ".git"), "gitdir: ../repo/.git/worktrees/linked-worktree", cancellationToken: cancellationToken);
             await _fileUtil.Write(Path.Join(notARepo, ".git"), "ordinary file", cancellationToken: cancellationToken);
 
-            List<string> result = await _util.GetAllGitRepositoriesRecursively(root, cancellationToken);
+            List<string> result = await _util.GetAllGitRepositoriesRecursively(root, cancellationToken, maxParallelism);
 
             result.Should().BeEquivalentTo([repo, nestedRepo, linkedWorktree]);
         }

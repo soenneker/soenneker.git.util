@@ -26,7 +26,6 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Git.Util;
 
-/// <inheritdoc cref="IGitUtil" />
 public sealed partial class GitUtil : IGitUtil
 {
     private readonly string _configToken;
@@ -54,7 +53,7 @@ public sealed partial class GitUtil : IGitUtil
     // Cache Authorization header per token to avoid base64 work every call
     private readonly ConcurrentDictionary<string, string> _authHeaderCache = new(StringComparer.Ordinal);
     
-    private readonly int _maxParallelism;
+    private static readonly int _defaultMaxParallelism = Math.Min(Environment.ProcessorCount, 8);
 
     private const string _gitTerminalPromptKey = "GIT_TERMINAL_PROMPT";
     private const string _gitTerminalPromptValue = "0";
@@ -98,8 +97,6 @@ public sealed partial class GitUtil : IGitUtil
             ? Path.Join("win-x64", "git", "cmd", "git.exe")
             : Path.Join("linux-x64", "git", "git.sh");
 
-        _maxParallelism = Math.Min(Environment.ProcessorCount, 8);
-
         _retry429 = Shield
                     .When<InvalidOperationException>(static ex =>
                         ex.Message.Contains("429", StringComparison.OrdinalIgnoreCase) ||
@@ -120,14 +117,21 @@ public sealed partial class GitUtil : IGitUtil
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ParallelOptions CreateParallelOptions(CancellationToken cancellationToken)
+    private static ParallelOptions CreateParallelOptions(CancellationToken cancellationToken, int? maxParallelism)
     {
         return new ParallelOptions
         {
-            // Cap to 8 threads – enough for network-bound Git without overwhelming disks
-            MaxDegreeOfParallelism = _maxParallelism,
+            MaxDegreeOfParallelism = GetMaxParallelism(maxParallelism),
             CancellationToken = cancellationToken
         };
+    }
+
+    private static int GetMaxParallelism(int? maxParallelism)
+    {
+        if (maxParallelism is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxParallelism), maxParallelism, "Maximum parallelism must be greater than zero.");
+
+        return maxParallelism ?? _defaultMaxParallelism;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -232,13 +236,13 @@ public sealed partial class GitUtil : IGitUtil
         }
     }
 
-    private async ValueTask ForEachRepo(List<string> repos, bool parallel, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
+    private async ValueTask ForEachRepo(List<string> repos, bool parallel, int? maxParallelism, CancellationToken ct, Func<string, CancellationToken, ValueTask> action)
     {
         // Use cancellation to stop discovery/scheduling, but never force-cancel an operation after it
         // starts mutating a repository. Abruptly killing Git can strand index, ref, pack, or GC locks.
         if (parallel)
         {
-            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct), (repo, _) => action(repo, CancellationToken.None))
+            await Parallel.ForEachAsync(repos, CreateParallelOptions(ct, maxParallelism), (repo, _) => action(repo, CancellationToken.None))
                           .NoSync();
 
             return;
@@ -555,8 +559,9 @@ public sealed partial class GitUtil : IGitUtil
         }
     }
 
-    public ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default)
+    public ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default, int? maxParallelism = null)
     {
+        int degreeOfParallelism = GetMaxParallelism(maxParallelism);
         _logger.LogDebug("Scanning for git repositories under {Root}", directory);
 
         var result = new List<string>();
@@ -574,7 +579,7 @@ public sealed partial class GitUtil : IGitUtil
 
         var pending = new Queue<string>();
         pending.Enqueue(Path.GetFullPath(directory));
-        int partitionTarget = Math.Max(4, _maxParallelism * 4);
+        int partitionTarget = (int)Math.Min(int.MaxValue, (long)degreeOfParallelism * 4);
 
         // Split near the root first. Each remaining subtree can then be scanned independently without
         // synchronizing for every directory or filesystem entry.
@@ -626,7 +631,7 @@ public sealed partial class GitUtil : IGitUtil
         };
         var discovered = new ConcurrentQueue<string>();
 
-        Parallel.ForEach(pending, CreateParallelOptions(cancellationToken), seed =>
+        Parallel.ForEach(pending, CreateParallelOptions(cancellationToken, maxParallelism), seed =>
         {
             var entries = new FileSystemEnumerable<GitFileSystemEntry>(seed,
                 static (ref FileSystemEntry e) => new GitFileSystemEntry(e.ToFullPath(), e.IsDirectory,
@@ -683,9 +688,9 @@ public sealed partial class GitUtil : IGitUtil
 
     private readonly record struct GitFileSystemEntry(string Path, bool IsDirectory, bool IsGitControlPath);
 
-    public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> GetAllDirtyRepositories(string directory, CancellationToken cancellationToken = default, int? maxParallelism = null)
     {
-        List<string> repos = await GetAllGitRepositoriesRecursively(directory, cancellationToken)
+        List<string> repos = await GetAllGitRepositoriesRecursively(directory, cancellationToken, maxParallelism)
             .NoSync();
         if (repos.Count == 0)
             return [];
@@ -695,7 +700,7 @@ public sealed partial class GitUtil : IGitUtil
 
         try
         {
-            await Parallel.ForAsync(0, repos.Count, CreateParallelOptions(cancellationToken), async (index, ct) =>
+            await Parallel.ForAsync(0, repos.Count, CreateParallelOptions(cancellationToken, maxParallelism), async (index, ct) =>
                           {
                               dirty[index] = await IsRepositoryDirty(repos[index], ct)
                                   .NoSync();
