@@ -82,9 +82,9 @@ public sealed partial class GitUtil : IGitUtil
         _resourcesPathUtil = resourcesPathUtil;
 
         // Capture config once – avoids mid-run reload surprises
-        _configToken = config.GetValueStrict<string>("Git:Token");
-        _configName = config.GetValueStrict<string>("Git:Name");
-        _configEmail = config.GetValueStrict<string>("Git:Email");
+        _configToken = config.GetStringStrict("Git:Token");
+        _configName = config.GetStringStrict("Git:Name");
+        _configEmail = config.GetStringStrict("Git:Email");
         _defaultBranch = config.GetValue<string>("Git:DefaultBranch") ?? "main";
         _logGitCommands = config.GetValue<bool>("Git:Log");
 
