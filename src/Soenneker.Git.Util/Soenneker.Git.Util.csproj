@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <IsAotCompatible>true</IsAotCompatible>
         <EnableConfigurationBindingGenerator>true</EnableConfigurationBindingGenerator>
         <Nullable>enable</Nullable>
@@ -10,7 +10,7 @@
 
     <PropertyGroup>
         <Description>Asynchronous Git operations, repository discovery, and bounded batch processing using bundled Git distributions.</Description>
-        <Version Condition="'$(BUILD_VERSION)' == ''">4.0.0</Version>
+        <Version Condition="'$(BUILD_VERSION)' == ''">11.0.0</Version>
         <Version Condition="'$(BUILD_VERSION)' != ''">$(BUILD_VERSION)</Version>
         <AssemblyName>Soenneker.Git.Util</AssemblyName>
         <PackageId>Soenneker.Git.Util</PackageId>
@@ -45,10 +45,10 @@
 
     <ItemGroup>
         <PackageReference Include="Kevlar" Version="1.3.0" />
-        <PackageReference Include="Soenneker.Extensions.Configuration" Version="4.0.911" />
+        <PackageReference Include="Soenneker.Extensions.Configuration" Version="11.0.913" />
         <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="4.0.1044" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2319" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2320" />
         <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1598" />
         <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="4.0.297" />
     </ItemGroup>
