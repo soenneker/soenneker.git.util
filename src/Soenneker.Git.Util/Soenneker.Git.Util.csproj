@@ -46,7 +46,7 @@
     <ItemGroup>
         <PackageReference Include="Kevlar" Version="1.4.0" />
         <PackageReference Include="Soenneker.Extensions.Configuration" Version="11.0.914" />
-        <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="11.0.156" PrivateAssets="analyzers;build" />
+        <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="11.0.158" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Utils.File" Version="11.0.2329" />
         <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1604" />
