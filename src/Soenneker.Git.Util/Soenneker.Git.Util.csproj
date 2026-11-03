@@ -49,8 +49,8 @@
         <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="11.0.158" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Utils.File" Version="11.0.2329" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1604" />
-        <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="11.0.303" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1605" />
+        <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="11.0.305" />
     </ItemGroup>
     <ItemGroup>
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.133" />
