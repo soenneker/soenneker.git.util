@@ -45,14 +45,14 @@
 
     <ItemGroup>
         <PackageReference Include="Kevlar" Version="1.5.0" />
-        <PackageReference Include="Soenneker.Extensions.Configuration" Version="11.0.914" />
-        <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="11.0.176" PrivateAssets="analyzers;build" />
+        <PackageReference Include="Soenneker.Extensions.Configuration" Version="11.0.916" />
+        <PackageReference Include="Soenneker.Libraries.Git.Linux" Version="11.0.178" PrivateAssets="analyzers;build" />
         <PackageReference Include="Soenneker.Libraries.Git.Windows" Version="4.0.1160" PrivateAssets="analyzers;build" />
-        <PackageReference Include="Soenneker.Utils.File" Version="11.0.2333" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1609" />
+        <PackageReference Include="Soenneker.Utils.File" Version="11.0.2334" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1610" />
         <PackageReference Include="Soenneker.Utils.Paths.Resources" Version="11.0.310" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.133" />
+        <PackageReference Include="Soenneker.Extensions.ValueTask" Version="11.0.135" />
     </ItemGroup>
 </Project>
