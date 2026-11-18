@@ -45,7 +45,8 @@ public sealed partial class GitUtil
                 }
 
                 removed++;
-                _logger.LogInformation("Removed stale index lock {Path}", path);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation("Removed stale index lock {Path}", path);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

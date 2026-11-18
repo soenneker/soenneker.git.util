@@ -396,7 +396,8 @@ public sealed partial class GitUtil : IGitUtil
 
             await Run(_pullArguments, directory, env: env, cancellationToken: cancellationToken)
                 .NoSync();
-            _logger.LogDebug("Pulled latest changes for {Dir}", directory);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("Pulled latest changes for {Dir}", directory);
         }
         catch (Exception ex)
         {
@@ -562,7 +563,8 @@ public sealed partial class GitUtil : IGitUtil
     public ValueTask<List<string>> GetAllGitRepositoriesRecursively(string directory, CancellationToken cancellationToken = default, int? maxParallelism = null)
     {
         int degreeOfParallelism = GetMaxParallelism(maxParallelism);
-        _logger.LogDebug("Scanning for git repositories under {Root}", directory);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            _logger.LogDebug("Scanning for git repositories under {Root}", directory);
 
         var result = new List<string>();
 
